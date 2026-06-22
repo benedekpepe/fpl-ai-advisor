@@ -26,6 +26,11 @@ constrained squad optimiser, behind a Streamlit dashboard.
   half of the season, and only says *play now* when this week **is** that peak —
   so the headline call never contradicts the per-chip detail.
 
+## Screenshots
+
+![Dashboard — advice for a gameweek](docs/dashboard.png)
+![Recommended transfers and chip plan](docs/chips.png)
+
 ## How it works
 
 1. **Ingestion** — the public FPL API for live team state, and the community
@@ -81,7 +86,7 @@ fpl-ai-advisor/
 ├── docker-compose.yml      # local Postgres service
 ├── requirements.txt
 ├── .env.example
-├── models/                 # trained model artifacts (regenerate by training)
+├── models/                 # trained model (two_stage_v3.pkl included; retrain via python -m src.model.model)
 ├── src/
 │   ├── config.py           # all constants in one place
 │   ├── data/               # loaders: DB history, team strengths
