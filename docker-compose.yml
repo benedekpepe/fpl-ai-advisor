@@ -1,0 +1,16 @@
+services:
+  db:
+    image: postgres:16
+    container_name: fpl-postgres
+    environment:
+      POSTGRES_USER: fpl
+      POSTGRES_PASSWORD: fpl
+      POSTGRES_DB: fpl
+    ports:
+      - "5432:5432"
+    volumes:
+      - fpl_pgdata:/var/lib/postgresql/data
+    restart: unless-stopped
+
+volumes:
+  fpl_pgdata:

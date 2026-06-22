@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+
+# Environment / secrets
+.env
+
+# Data dumps
+data/
+*.csv
+*.parquet
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+
+# Trained model artifacts (regenerate with: python -m src.model.model)
+models/
+
+# pytest
+.pytest_cache/
+
+# Streamlit secrets (never commit the app password / DB creds)
+.streamlit/secrets.toml
