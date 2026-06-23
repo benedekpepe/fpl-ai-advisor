@@ -5,6 +5,7 @@ the LightGBM hyper-parameters were duplicated across the training scripts,
 the squad quotas lived in both the optimiser and the advisor, and the dataset
 URLs in several places. Import from here instead of redefining things locally.
 """
+import os
 from pathlib import Path
 
 # ------------------------------------------------------------------- paths
@@ -23,6 +24,14 @@ TEAMS_URL = VAASTAV_BASE + "/{season}/teams.csv"
 # ----------------------------------------------------------------- seasons
 CURRENT_SEASON = "2025-26"
 TEST_SEASON = "2024-25"                                  # out-of-time backtest
+
+# ------------------------------------------------------------- data source
+# Where predict_all / the fixture ticker read per-gameweek history from:
+#   "db"   -> local Postgres (the default demo: historical vaastav data)
+#   "live" -> the live FPL API (the 2026-27 in-season mode; see ingestion/live.py)
+#   "csv"  -> reserved: read the vaastav CSVs directly (no database)
+# Override with the FPL_DATA_SOURCE environment variable (e.g. on deploy).
+DATA_SOURCE = os.getenv("FPL_DATA_SOURCE", "db")
 
 # ------------------------------------------------------------------- model
 LGBM_PARAMS = dict(

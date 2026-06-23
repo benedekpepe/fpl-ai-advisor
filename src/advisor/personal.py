@@ -21,7 +21,7 @@ import pulp
 import requests
 
 from src.model.features import build_feature_frame
-from src.data.history import load_history_from_db
+from src.data.history import load_history
 from src.model.model import attach_opponent_strength
 from src.optim.optimizer import optimize_squad
 from src.data.teams import teams_meta
@@ -44,7 +44,7 @@ def predict_all(season: str) -> pd.DataFrame:
     """
     bundle = joblib.load(MODEL_PATH)
     clf, reg, cols = bundle["clf"], bundle["reg"], bundle["cols"]
-    feats = build_feature_frame(attach_opponent_strength(load_history_from_db()))
+    feats = build_feature_frame(attach_opponent_strength(load_history()))
     feats = feats[feats["season"] == season].copy()
     feats["pred"] = clf.predict_proba(feats[cols])[:, 1] * reg.predict(feats[cols])
     return feats.groupby(["gw", "element"]).agg(
@@ -357,7 +357,7 @@ def _print_rows(rows, w=24):
 
 def team_fixtures(season, from_gw, n=4):
     """{team_name: [{opp, home, diff}, ...]} for the next n gameweeks after from_gw."""
-    hist = load_history_from_db()
+    hist = load_history()
     if "gw" not in hist.columns and "GW" in hist.columns:
         hist = hist.rename(columns={"GW": "gw"})
     if "season" in hist.columns:
