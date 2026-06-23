@@ -35,7 +35,8 @@ constrained squad optimiser, behind a Streamlit dashboard.
 
 1. **Ingestion** — the public FPL API for live team state, and the community
    [vaastav/Fantasy-Premier-League](https://github.com/vaastav/Fantasy-Premier-League)
-   dataset for per-gameweek history, loaded into Postgres.
+   dataset for per-gameweek history. Per-gameweek data is read through a
+   configurable source (see *Data source* below).
 2. **Features** — leakage-free rolling form (each stat shifted one game so a game
    never sees its own outcome), season-to-date form, minutes/starts trends,
    home/away, and opponent attack/defence strength as fixture difficulty.
@@ -50,6 +51,19 @@ constrained squad optimiser, behind a Streamlit dashboard.
    math, and applies the chip-timing logic above.
 6. **Dashboard** — a Streamlit app that renders the pitch, the recommended moves,
    and the chip plan.
+
+### Data source
+
+Per-gameweek data is read through one switch, the `FPL_DATA_SOURCE` environment
+variable, so the same code serves local development, the hosted demo and the
+in-season live mode:
+
+- **`db`** (default) — local Postgres, the historical dataset loaded by the
+  ingestion scripts; used to train and backtest the model.
+- **`csv`** — the vaastav CSVs pulled directly at runtime, no database; this is
+  what the hosted demo uses.
+- **`live`** — the live FPL API (current-gameweek detection and player
+  availability), for in-season use in 2026-27; see `src/ingestion/live.py`.
 
 ## Model performance
 
@@ -89,9 +103,9 @@ fpl-ai-advisor/
 ├── models/                 # trained model (two_stage_v3.pkl included; retrain via python -m src.model.model)
 ├── src/
 │   ├── config.py           # all constants in one place
-│   ├── data/               # loaders: DB history, team strengths
+│   ├── data/               # loaders: history (db / csv), team strengths
 │   ├── db/                 # schema, connection, init
-│   ├── ingestion/          # FPL API client + historical loader
+│   ├── ingestion/          # FPL API client, historical loader, live mode
 │   ├── model/              # features, production model, baseline
 │   ├── optim/              # squad / XI / captain optimiser
 │   └── advisor/            # advice assembly + CLI
@@ -99,6 +113,20 @@ fpl-ai-advisor/
 ```
 
 ## Getting started
+
+The dashboard reads per-gameweek data from a configurable source (the
+`FPL_DATA_SOURCE` environment variable — see *Data source* above).
+
+**Run without a database** (the quickest way to try it): create the virtual
+environment and install dependencies (step 2 below), then:
+
+```bash
+FPL_DATA_SOURCE=csv streamlit run app.py
+# Windows (PowerShell): $env:FPL_DATA_SOURCE="csv"; streamlit run app.py
+```
+
+For the full local setup with Postgres (used to train the model and ingest live
+state), follow the steps below.
 
 ### Prerequisites
 
@@ -186,13 +214,25 @@ network, so they run in seconds:
 pytest -q
 ```
 
+## Deployment
+
+The hosted demo runs on Streamlit Community Cloud with **no database** — it reads
+the season's data from the vaastav CSVs at runtime. Two settings on the host:
+
+- environment variable `FPL_DATA_SOURCE=csv`
+- (optional) an `app_password` secret to gate access to invited users
+
+For the 2026-27 season, switching `FPL_DATA_SOURCE=live` moves the same app onto
+the live FPL API — current-gameweek detection and player availability included —
+with no other code change (see `src/ingestion/live.py`).
+
 ## Notes and limitations
 
 - The model uses form, fixtures and home/away, but **not** live injury or
   suspension status (that data isn't available historically, so it can't be
-  backtested honestly). The Wildcard logic is a reasonable proxy. A planned
-  live-inference mode will incorporate the FPL availability flags (`status`,
-  `chance_of_playing`), which should sharpen real-world advice.
+  backtested honestly). The Wildcard logic is a reasonable proxy. The live mode
+  incorporates the FPL availability flags (`status`, `chance_of_playing`), which
+  should sharpen real-world advice.
 - It projects your **current** squad forward, so it can't foresee future squad
   improvements from transfers — early-window chip peaks can read a little eager.
 - FPL has high inherent variance. The aim is systematically better-than-gut
