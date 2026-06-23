@@ -2,6 +2,8 @@
 
 [![CI](https://github.com/benedekpepe/fpl-ai-advisor/actions/workflows/ci.yml/badge.svg)](https://github.com/benedekpepe/fpl-ai-advisor/actions/workflows/ci.yml)
 
+**Live demo: https://fpl-ai-advisor.streamlit.app/**
+
 A weekly decision aid for [Fantasy Premier League](https://fantasy.premierleague.com/).
 Give it a team ID and a gameweek, and it recommends a **captain**, the best
 **transfer(s)** (weighing form against upcoming fixtures, including whether a
