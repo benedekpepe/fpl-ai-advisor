@@ -1,5 +1,7 @@
 # FPL AI Advisor
 
+[![CI](https://github.com/benedekpepe/fpl-ai-advisor/actions/workflows/ci.yml/badge.svg)](https://github.com/benedekpepe/fpl-ai-advisor/actions/workflows/ci.yml)
+
 A weekly decision aid for [Fantasy Premier League](https://fantasy.premierleague.com/).
 Give it a team ID and a gameweek, and it recommends a **captain**, the best
 **transfer(s)** (weighing form against upcoming fixtures, including whether a
@@ -213,6 +215,9 @@ network, so they run in seconds:
 ```bash
 pytest -q
 ```
+
+They also run automatically on every push and pull request via GitHub Actions
+(Python 3.11 and 3.12) — see the CI badge at the top.
 
 ## Deployment
 
