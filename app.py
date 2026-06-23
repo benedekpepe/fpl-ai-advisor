@@ -449,7 +449,7 @@ def gate():
     pw = st.text_input("Access password", type="password")
     if pw and pw == configured:
         st.session_state["authed"] = True
-        return True
+        st.rerun()          # re-run immediately so the prompt disappears
     if pw:
         st.error("Wrong password.")
     return False
