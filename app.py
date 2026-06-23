@@ -67,8 +67,8 @@ CSS = """
 .sub{color:#8a97a6;font-size:13px;margin-top:2px}
 .head{display:flex;justify-content:space-between;align-items:center;gap:12px}
 .credit{font-size:12px;color:#8a97a6;white-space:nowrap;margin-top:6px}
-.fpl a.credit{color:#8a97a6;text-decoration:none}
-.fpl a.credit:hover{color:#38bdf8}
+.fpl a.credit{color:#38bdf8;text-decoration:underline}
+.fpl a.credit:hover{color:#7cd4fb}
 .fpl a{color:#38bdf8;text-decoration:none;cursor:pointer}
 .fpl a:hover{text-decoration:underline}
 .lbl{font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:#7d8a99;font-weight:700;margin:24px 0 10px}
@@ -146,7 +146,7 @@ CSS = """
 .foot{color:#5f6b78;font-size:11px;margin-top:18px;border-top:1px solid rgba(255,255,255,.07);
   padding-top:12px;display:flex;justify-content:space-between;gap:14px;flex-wrap:wrap}
 .foot span{max-width:560px}
-.fpl a.foot-link{color:#7d8a99}
+.fpl a.foot-link{color:#38bdf8;text-decoration:underline}
 .tip:hover{z-index:20}
 .tip:hover::after{content:attr(data-tip);position:absolute;left:50%;bottom:calc(100% + 8px);transform:translateX(-50%);
   background:#0b1118;color:#e8edf2;border:1px solid rgba(255,255,255,.16);border-radius:8px;padding:5px 9px;
