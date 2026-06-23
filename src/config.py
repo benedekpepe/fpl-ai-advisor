@@ -27,9 +27,9 @@ TEST_SEASON = "2024-25"                                  # out-of-time backtest
 
 # ------------------------------------------------------------- data source
 # Where predict_all / the fixture ticker read per-gameweek history from:
-#   "db"   -> local Postgres (the default demo: historical vaastav data)
+#   "db"   -> local Postgres (default for local development)
+#   "csv"  -> the vaastav CSVs directly, no database (used for the hosted demo)
 #   "live" -> the live FPL API (the 2026-27 in-season mode; see ingestion/live.py)
-#   "csv"  -> reserved: read the vaastav CSVs directly (no database)
 # Override with the FPL_DATA_SOURCE environment variable (e.g. on deploy).
 DATA_SOURCE = os.getenv("FPL_DATA_SOURCE", "db")
 
