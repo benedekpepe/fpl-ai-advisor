@@ -48,7 +48,7 @@ def club_color(team):
 
 AUTHOR_URL = "https://benedekpeter.netlify.app/"
 CREDIT = (f"<a class='credit' href='{AUTHOR_URL}' target='_blank' rel='noopener'>"
-          f"by B.P. Studio · Péter Benedek ↗</a>")
+          f"by B.P. Studio · Péter Benedek ↗︎</a>")
 
 
 # ---------------------------------------------------------------- styling
@@ -468,9 +468,9 @@ def main():
         return
 
     with st.form("inputs"):
-        st.markdown("<div style='color:#8a97a6;font-size:13px;margin-bottom:4px'>Enter your FPL team id "
+        st.markdown("<div style='color:#8a97a6;font-size:13px;margin-bottom:4px'>Enter your FPL Team ID "
                     "and a gameweek for a data-driven weekly plan.</div>", unsafe_allow_html=True)
-        team_id = st.text_input("FPL team id", value="", placeholder="e.g. 1234567",
+        team_id = st.text_input("FPL Team ID", value="", placeholder="e.g. 1234567",
                                 help="The number in your FPL team URL: /entry/<this>/")
         gw = st.select_slider("Gameweek", options=list(range(1, 39)), value=6)
         st.caption("Next season the gameweek will auto-detect; for now pick one.")
@@ -478,7 +478,7 @@ def main():
 
     if submitted:
         if not team_id.strip():
-            st.info("Enter your FPL team id above to get advice.")
+            st.info("Enter your FPL Team ID above to get advice.")
             return
         if not team_id.strip().isdigit():
             st.error("Team id must be a number (find it in your FPL team URL).")
