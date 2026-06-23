@@ -205,7 +205,7 @@ The advisor also runs without the dashboard:
 
 ```bash
 python -m src.advisor.personal <team_id> <gameweek>
-# e.g. python -m src.advisor.personal 3136812 16
+# e.g. python -m src.advisor.personal 1234567 16
 ```
 
 ## Tests
