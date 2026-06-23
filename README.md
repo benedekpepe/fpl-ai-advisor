@@ -58,7 +58,7 @@ Out-of-time backtest: trained on past seasons, evaluated on an unseen one
 
 | Model | MAE | RMSE | Spearman |
 | --- | --- | --- | --- |
-| **Two-stage + fixtures** (this project) | **1.053** | **2.076** | 0.695 |
+| **Two-stage + fixtures** (this project) | **1.050** | **2.069** | 0.696 |
 | Baseline: last-3-game form | 1.105 | 2.235 | 0.702 |
 | Reference: FPL's own expected points | 0.928 | 1.834 | 0.704 |
 
