@@ -470,13 +470,16 @@ def main():
     with st.form("inputs"):
         st.markdown("<div style='color:#8a97a6;font-size:13px;margin-bottom:4px'>Enter your FPL team id "
                     "and a gameweek for a data-driven weekly plan.</div>", unsafe_allow_html=True)
-        team_id = st.text_input("FPL team id", value="3136812",
+        team_id = st.text_input("FPL team id", value="", placeholder="e.g. 1234567",
                                 help="The number in your FPL team URL: /entry/<this>/")
         gw = st.select_slider("Gameweek", options=list(range(1, 39)), value=6)
         st.caption("Next season the gameweek will auto-detect; for now pick one.")
         submitted = st.form_submit_button("Get advice")
 
     if submitted:
+        if not team_id.strip():
+            st.info("Enter your FPL team id above to get advice.")
+            return
         if not team_id.strip().isdigit():
             st.error("Team id must be a number (find it in your FPL team URL).")
             return
