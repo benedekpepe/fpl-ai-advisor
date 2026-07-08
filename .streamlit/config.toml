@@ -4,3 +4,7 @@ primaryColor = "#38bdf8"
 backgroundColor = "#070a0f"
 secondaryBackgroundColor = "#121821"
 textColor = "#e8edf2"
+
+[client]
+# Hide the top-right Streamlit toolbar (menu / dev options) on the public demo.
+toolbarMode = "minimal"
