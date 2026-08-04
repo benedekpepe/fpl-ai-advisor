@@ -20,10 +20,12 @@ VAASTAV_BASE = ("https://raw.githubusercontent.com/vaastav/"
                 "Fantasy-Premier-League/master/data")
 MERGED_GW_URL = VAASTAV_BASE + "/{season}/gws/merged_gw.csv"
 TEAMS_URL = VAASTAV_BASE + "/{season}/teams.csv"
+PLAYERS_RAW_URL = VAASTAV_BASE + "/{season}/players_raw.csv"
 
 # ----------------------------------------------------------------- seasons
 CURRENT_SEASON = "2025-26"
 TEST_SEASON = "2024-25"                                  # out-of-time backtest
+SEED_SEASON = "2025-26"          # last completed season, used to seed pre-season/GW1 cold-start
 
 # ------------------------------------------------------------- data source
 # Where predict_all / the fixture ticker read per-gameweek history from:
