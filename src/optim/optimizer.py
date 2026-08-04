@@ -14,10 +14,14 @@ import pulp
 from src.config import SQUAD, XI_MIN, XI_MAX, MAX_PER_CLUB, DEFAULT_BUDGET
 
 
-def optimize_squad(players: pd.DataFrame, budget: int = DEFAULT_BUDGET) -> pd.DataFrame:
+def optimize_squad(players: pd.DataFrame, budget: int = DEFAULT_BUDGET,
+                   force_ids=None) -> pd.DataFrame:
     """Return the chosen squad with in_squad / starting / captain flags.
 
     `players` must have columns: pred, price, position (GK/DEF/MID/FWD), team.
+    `force_ids`, if given, is a set of values from the `id` column that must be
+    included in the 15-man squad (used to pin must-have picks like a premium
+    forward at the start of the season).
     """
     p = players.reset_index(drop=True)
     idx = list(p.index)
@@ -49,6 +53,12 @@ def optimize_squad(players: pd.DataFrame, budget: int = DEFAULT_BUDGET) -> pd.Da
     for club in p["team"].unique():
         members = [i for i in idx if p.loc[i, "team"] == club]
         prob += pulp.lpSum(x[i] for i in members) <= MAX_PER_CLUB
+
+    if force_ids and "id" in p.columns:
+        forced = set(force_ids)
+        for i in idx:
+            if p.loc[i, "id"] in forced:
+                prob += x[i] == 1     # must be in the squad
 
     prob.solve(pulp.PULP_CBC_CMD(msg=0))
     if pulp.LpStatus[prob.status] != "Optimal":

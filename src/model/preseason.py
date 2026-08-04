@@ -195,11 +195,48 @@ def _print_squad(squad: pd.DataFrame, preds: pd.DataFrame) -> None:
     print(f"\nSquad cost: £{squad['price'].sum()/10:.1f}m / £100.0m")
 
 
+def _resolve_pins(preds: pd.DataFrame, names: list) -> list:
+    """Map pinned player names to ids (best/most-played match per name)."""
+    ids = []
+    for n in names:
+        hit = preds[preds["name"].str.contains(n, case=False, na=False)]
+        if len(hit):
+            row = hit.sort_values("pred", ascending=False).iloc[0]
+            ids.append(int(row["id"]))
+            print(f"Pinned: {row['name']} (£{row['price'] / 10:.1f}m)")
+        else:
+            print(f"Pin not found (ignored): {n}")
+    return ids
+
+
+def _xi_points(squad: pd.DataFrame) -> float:
+    """Objective the optimiser maximises: XI points + captain counted again."""
+    xi = squad[squad["starting"] == 1]
+    cap = squad[squad["captain"] == 1]
+    return xi["pred"].sum() + (cap["pred"].iloc[0] if len(cap) else 0.0)
+
+
 def main() -> None:
+    import argparse
+    parser = argparse.ArgumentParser(
+        description="Recommend a Fantasy Premier League squad for the upcoming "
+                    "(unplayed) gameweek, seeded from last season's form.")
+    parser.add_argument("--pin", default="",
+                        help="comma-separated player names to force into the "
+                             "squad, e.g. --pin Haaland")
+    args = parser.parse_args()
+
     client = FPLClient()
     preds = preseason_predictions(client)
-    squad = optimize_squad(preds)
+    force_ids = _resolve_pins(preds, [n.strip() for n in args.pin.split(",") if n.strip()])
+
+    squad = optimize_squad(preds, force_ids=force_ids or None)
     _print_squad(squad, preds)
+
+    if force_ids:
+        cost = _xi_points(squad) - _xi_points(optimize_squad(preds))
+        print(f"\nForced picks cost: {cost:+.1f} projected pts vs the "
+              f"unconstrained squad")
 
     flagged = flagged_players(client.get_bootstrap_static())
     notable = flagged[(flagged["price"] >= 55) | flagged["chance"].notna()] \
