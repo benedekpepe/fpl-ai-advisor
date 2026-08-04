@@ -25,9 +25,12 @@ import requests
 
 from src.config import (MERGED_GW_URL, PLAYERS_RAW_URL, SEED_SEASON, MODEL_PATH)
 from src.ingestion.fpl_client import FPLClient
+from src.ingestion.live import availability
 from src.optim.optimizer import optimize_squad
 
 POSITION = {1: "GK", 2: "DEF", 3: "MID", 4: "FWD"}
+STATUS_LABEL = {"a": "available", "d": "doubtful", "i": "injured",
+                "s": "suspended", "u": "unavailable", "n": "not in squad"}
 
 # Per-game form stats the model's rolling features are built from.
 BASES = ["total_points", "minutes", "expected_goals", "expected_assists",
@@ -133,8 +136,13 @@ def preseason_frame(bootstrap: dict, fixtures: list,
 
 
 def preseason_predictions(client: FPLClient = None,
-                          seed_season: str = SEED_SEASON) -> pd.DataFrame:
-    """Projected points for every player for the upcoming (unplayed) gameweek."""
+                          seed_season: str = SEED_SEASON,
+                          apply_availability: bool = True) -> pd.DataFrame:
+    """Projected points for every player for the upcoming (unplayed) gameweek.
+
+    With ``apply_availability`` (default), each projection is scaled by the live
+    availability multiplier, so injured/suspended players drop out of selection.
+    """
     client = client or FPLClient()
     bootstrap = client.get_bootstrap_static()
     fixtures = client.get_fixtures()
@@ -143,8 +151,23 @@ def preseason_predictions(client: FPLClient = None,
     bundle = joblib.load(MODEL_PATH)
     clf, reg, cols = bundle["clf"], bundle["reg"], bundle["cols"]
     df["pred"] = clf.predict_proba(df[cols])[:, 1] * reg.predict(df[cols])
+    if apply_availability:
+        av = availability(client)
+        df["pred"] = df["pred"] * df["id"].map(av).fillna(1.0)
     return df[["id", "name", "position", "team", "value", "pred"]].rename(
         columns={"value": "price"})
+
+
+def flagged_players(bootstrap: dict) -> pd.DataFrame:
+    """Players the live API marks as not fully available (injured/doubtful/etc)."""
+    rows = [{"name": e.get("web_name"), "price": e["now_cost"],
+             "position": POSITION.get(e["element_type"]),
+             "status": STATUS_LABEL.get(e.get("status"), e.get("status")),
+             "chance": e.get("chance_of_playing_next_round"),
+             "news": (e.get("news") or "").strip()}
+            for e in bootstrap["elements"] if e.get("status", "a") != "a"]
+    df = pd.DataFrame(rows)
+    return df.sort_values("price", ascending=False) if len(df) else df
 
 
 def preseason_squad(client: FPLClient = None,
@@ -173,9 +196,21 @@ def _print_squad(squad: pd.DataFrame, preds: pd.DataFrame) -> None:
 
 
 def main() -> None:
-    preds = preseason_predictions()
+    client = FPLClient()
+    preds = preseason_predictions(client)
     squad = optimize_squad(preds)
     _print_squad(squad, preds)
+
+    flagged = flagged_players(client.get_bootstrap_static())
+    notable = flagged[(flagged["price"] >= 55) | flagged["chance"].notna()] \
+        if len(flagged) else flagged
+    if len(notable):
+        print("\nAvailability flags (live FPL API) — excluded or downweighted:")
+        for _, r in notable.head(20).iterrows():
+            chance = f"  {int(r['chance'])}%" if pd.notna(r["chance"]) else ""
+            news = f" — {r['news']}" if r["news"] else ""
+            print(f"  {r['position']:<4}{r['name']:<20}£{r['price']/10:>4.1f}m  "
+                  f"{r['status']}{chance}{news}")
 
 
 if __name__ == "__main__":
