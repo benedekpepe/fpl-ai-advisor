@@ -23,10 +23,10 @@ import requests
 from src.model.features import build_feature_frame
 from src.data.history import load_history
 from src.model.model import attach_opponent_strength
-from src.optim.optimizer import optimize_squad
+from src.optim.optimizer import optimize_squad, conflict_dock
 from src.data.teams import teams_meta
 from src.config import (
-    CURRENT_SEASON as SEASON, FPL_API as FPL, MODEL_PATH,
+    CURRENT_SEASON as SEASON, FPL_API as FPL, MODEL_PATH, CONFLICT_PENALTY,
     SQUAD, XI_MIN, XI_MAX, MAX_PER_CLUB, HIT, MAX_FT, BANK_THRESHOLD,
     POSITION_ORDER as ORDER, CHIP_LABEL, HALF_DEADLINE, HALF_LABEL,
 )
@@ -132,14 +132,17 @@ def recommend_chip(timing: dict, gw: int):
 
 
 # --------------------------- optimisation ---------------------------------
-def optimize_xi(squad: pd.DataFrame):
+def optimize_xi(squad: pd.DataFrame, conflict_penalty: float = 0.0):
     s = squad.reset_index(drop=True)
     idx = list(s.index)
     pred, pos = s["pred"].to_dict(), s["position"].to_dict()
     prob = pulp.LpProblem("xi", pulp.LpMaximize)
     y = pulp.LpVariable.dicts("start", idx, cat="Binary")
     c = pulp.LpVariable.dicts("capt", idx, cat="Binary")
-    prob += pulp.lpSum(pred[i] * y[i] for i in idx) + pulp.lpSum(pred[i] * c[i] for i in idx)
+    objective = (pulp.lpSum(pred[i] * y[i] for i in idx)
+                 + pulp.lpSum(pred[i] * c[i] for i in idx))
+    objective = objective - conflict_dock(prob, y, s, conflict_penalty)
+    prob += objective
     for i in idx:
         prob += c[i] <= y[i]
     prob += pulp.lpSum(y.values()) == 11
@@ -397,7 +400,18 @@ def build_advice(team_id, gw, ft_override=None):
         return {"ok": False, "team_id": team_id, "gw": gw, "season": SEASON,
                 "error": "Not enough player data to advise this gameweek."}
 
-    base_val, base_xi = optimize_xi(squad)
+    # Attach each player's fixture id for this gameweek so the XI optimiser is
+    # stack-aware (won't start opposing players from the same match).
+    _hist = load_history()
+    if "gw" not in _hist.columns and "GW" in _hist.columns:
+        _hist = _hist.rename(columns={"GW": "gw"})
+    if "season" in _hist.columns:
+        _hist = _hist[_hist["season"] == SEASON]
+    if "fixture" in _hist.columns:
+        _fx = _hist[_hist["gw"] == gw]
+        squad["match"] = squad["id"].map(dict(zip(_fx["element"], _fx["fixture"])))
+
+    base_val, base_xi = optimize_xi(squad, conflict_penalty=CONFLICT_PENALTY)
     cap = base_xi[base_xi["captain"] == 1].iloc[0]
     nm = pool.set_index("id")["name"].to_dict()
     pos = pool.set_index("id")["position"].to_dict()

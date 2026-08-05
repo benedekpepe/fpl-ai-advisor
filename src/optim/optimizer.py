@@ -14,6 +14,45 @@ import pulp
 from src.config import SQUAD, XI_MIN, XI_MAX, MAX_PER_CLUB, DEFAULT_BUDGET
 
 
+def conflict_dock(prob, y, p, conflict_penalty, min_pred=2.5):
+    """LP dock for starting pairs that face each other with opposed point sources.
+
+    Needs a `match` column (an id equal for both players in the same fixture),
+    plus `team`, `position` and `pred`. Two starters conflict when they share a
+    match but sit on opposite sides (different `team`) with opposed roles: an
+    attacker (MID/FWD) vs a defender/keeper (weight 1.0), or two clean-sheet
+    reliant defenders (0.6); two attackers don't conflict. Adds the auxiliary
+    binary vars/constraints to `prob` and returns the penalty expression to
+    subtract from the objective (0 when not applicable). The dock scales with the
+    weaker projection, so cheap bench enablers are effectively unaffected.
+    """
+    if conflict_penalty <= 0 or "match" not in p.columns:
+        return 0
+    idx = list(p.index)
+    pred = p["pred"].to_dict()
+    match = p["match"].to_dict()
+    team = p["team"].to_dict()
+    pos = p["position"].to_dict()
+    attack = {"MID", "FWD"}
+    cand = [i for i in idx if pred[i] >= min_pred and pd.notna(match.get(i))]
+    docks = []
+    for a in range(len(cand)):
+        for b in range(a + 1, len(cand)):
+            i, j = cand[a], cand[b]
+            if match[i] != match[j] or team[i] == team[j]:
+                continue                       # not the same match, or same side
+            ai, aj = pos[i] in attack, pos[j] in attack
+            weight = 1.0 if ai != aj else (0.6 if not ai else 0.0)
+            if weight <= 0:
+                continue                       # two attackers: no dock
+            z = pulp.LpVariable(f"conflict_{i}_{j}", cat="Binary")
+            prob += z <= y[i]
+            prob += z <= y[j]
+            prob += z >= y[i] + y[j] - 1
+            docks.append(conflict_penalty * weight * min(pred[i], pred[j]) * z)
+    return pulp.lpSum(docks) if docks else 0
+
+
 def optimize_squad(players: pd.DataFrame, budget: int = DEFAULT_BUDGET,
                    force_ids=None, conflict_penalty: float = 0.0) -> pd.DataFrame:
     """Return the chosen squad with in_squad / starting / captain flags.
@@ -23,13 +62,12 @@ def optimize_squad(players: pd.DataFrame, budget: int = DEFAULT_BUDGET,
     included in the 15-man squad (used to pin must-have picks like a premium
     forward at the start of the season).
 
-    `conflict_penalty` (> 0, needs an `opponent` column giving each player's
-    opponent club this gameweek) makes the optimiser *stack-aware*: it docks the
-    objective when two **starting** players face each other with opposed point
-    sources — an attacker (MID/FWD) against a defender/keeper, or two clean-sheet
-    reliant defenders — so it avoids picking both sides of the same match. The
-    dock scales with the weaker player's projection, so cheap bench enablers are
-    effectively unaffected.
+    `conflict_penalty` (> 0, needs a `match` column giving each player's fixture
+    id for the gameweek) makes the optimiser *stack-aware*: it docks the objective
+    when two **starting** players face each other with opposed point sources — an
+    attacker (MID/FWD) against a defender/keeper, or two clean-sheet reliant
+    defenders — so it avoids picking both sides of the same match. See
+    ``conflict_dock``.
     """
     p = players.reset_index(drop=True)
     idx = list(p.index)
@@ -45,31 +83,7 @@ def optimize_squad(players: pd.DataFrame, budget: int = DEFAULT_BUDGET,
     # Objective: XI points, with the captain's points counted a second time.
     objective = (pulp.lpSum(pred[i] * y[i] for i in idx)
                  + pulp.lpSum(pred[i] * c[i] for i in idx))
-
-    # Stack-awareness: subtract a dock for each starting pair that faces off with
-    # opposed point sources (see docstring). Modelled on the XI vars (y).
-    if conflict_penalty > 0 and "opponent" in p.columns:
-        team = p["team"].to_dict()
-        opp = p["opponent"].to_dict()
-        attack = {"MID", "FWD"}
-        cand = [i for i in idx if pred[i] >= 2.5]      # only plausible starters
-        docks = []
-        for a in range(len(cand)):
-            for b in range(a + 1, len(cand)):
-                i, j = cand[a], cand[b]
-                if team[i] == team[j] or opp.get(i) != team[j] or opp.get(j) != team[i]:
-                    continue                            # not the same match
-                ai, aj = pos[i] in attack, pos[j] in attack
-                weight = 1.0 if ai != aj else (0.6 if not ai else 0.0)
-                if weight <= 0:
-                    continue                            # two attackers: no dock
-                z = pulp.LpVariable(f"conflict_{i}_{j}", cat="Binary")
-                prob += z <= y[i]
-                prob += z <= y[j]
-                prob += z >= y[i] + y[j] - 1
-                docks.append(conflict_penalty * weight * min(pred[i], pred[j]) * z)
-        if docks:
-            objective = objective - pulp.lpSum(docks)
+    objective = objective - conflict_dock(prob, y, p, conflict_penalty)
 
     prob += objective
 

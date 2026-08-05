@@ -23,7 +23,8 @@ import numpy as np
 import pandas as pd
 import requests
 
-from src.config import (MERGED_GW_URL, PLAYERS_RAW_URL, SEED_SEASON, MODEL_PATH)
+from src.config import (MERGED_GW_URL, PLAYERS_RAW_URL, SEED_SEASON, MODEL_PATH,
+                        CONFLICT_PENALTY)
 from src.ingestion.fpl_client import FPLClient
 from src.ingestion.live import availability
 from src.optim.optimizer import optimize_squad
@@ -36,12 +37,6 @@ STATUS_LABEL = {"a": "available", "d": "doubtful", "i": "injured",
 BASES = ["total_points", "minutes", "expected_goals", "expected_assists",
          "expected_goal_involvements", "bps", "ict_index"]
 SEED_COLS = BASES + ["starts_rate_5", "cum_ppg"]
-
-# Stack-awareness: how hard to discourage starting two players who face each
-# other with opposed point sources (attacker vs defender/keeper). Scales with
-# the weaker player's projection; 0 disables it. Tuned to break clear conflicts
-# without gutting the squad.
-CONFLICT_PENALTY = 0.35
 
 
 def _csv(url: str) -> pd.DataFrame:
@@ -129,6 +124,9 @@ def preseason_frame(bootstrap: dict, fixtures: list,
         df[f"roll_{b}_5"] = df[b]
     df["games_played"] = 0
     df["is_home"] = df["was_home"].astype(float)
+    lo = df[["team", "opponent_team"]].min(axis=1).astype(int).astype(str)
+    hi = df[["team", "opponent_team"]].max(axis=1).astype(int).astype(str)
+    df["match"] = lo + "-" + hi
     for p in POSITION.values():
         df[f"pos_{p}"] = (df["position"] == p).astype(float)
 
@@ -160,8 +158,8 @@ def preseason_predictions(client: FPLClient = None,
     if apply_availability:
         av = availability(client)
         df["pred"] = df["pred"] * df["id"].map(av).fillna(1.0)
-    return df[["id", "name", "position", "team", "opponent_team", "value",
-               "pred"]].rename(columns={"value": "price", "opponent_team": "opponent"})
+    return df[["id", "name", "position", "team", "match", "value",
+               "pred"]].rename(columns={"value": "price"})
 
 
 def flagged_players(bootstrap: dict) -> pd.DataFrame:

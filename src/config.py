@@ -27,6 +27,10 @@ CURRENT_SEASON = "2025-26"
 TEST_SEASON = "2024-25"                                  # out-of-time backtest
 SEED_SEASON = "2025-26"          # last completed season, used to seed pre-season/GW1 cold-start
 
+# Stack-awareness: how hard to discourage starting two players who face each other
+# with opposed point sources (attacker vs defender/keeper). 0 disables it.
+CONFLICT_PENALTY = 0.35
+
 # ------------------------------------------------------------- data source
 # Where predict_all / the fixture ticker read per-gameweek history from:
 #   "db"   -> local Postgres (default for local development)
