@@ -27,6 +27,7 @@ from src.optim.optimizer import optimize_squad, conflict_dock
 from src.data.teams import teams_meta
 from src.config import (
     ACTIVE_SEASON as SEASON, FPL_API as FPL, MODEL_PATH, CONFLICT_PENALTY,
+    DATA_SOURCE,
     SQUAD, XI_MIN, XI_MAX, MAX_PER_CLUB, HIT, MAX_FT, BANK_THRESHOLD,
     POSITION_ORDER as ORDER, CHIP_LABEL, HALF_DEADLINE, HALF_LABEL,
 )
@@ -188,8 +189,10 @@ def plan_transfers(current_ids, pool, bank, ft):
     y = pulp.LpVariable.dicts("xi", idx, cat="Binary")
     c = pulp.LpVariable.dicts("cap", idx, cat="Binary")
     hits = pulp.LpVariable("hits", lowBound=0)
-    prob += (pulp.lpSum(pred[i] * y[i] for i in idx)
-             + pulp.lpSum(pred[i] * c[i] for i in idx) - HIT * hits)
+    objective = (pulp.lpSum(pred[i] * y[i] for i in idx)
+                 + pulp.lpSum(pred[i] * c[i] for i in idx) - HIT * hits)
+    objective = objective - conflict_dock(prob, y, p, CONFLICT_PENALTY)
+    prob += objective
     for i in idx:
         prob += y[i] <= x[i]
         prob += c[i] <= y[i]
@@ -226,7 +229,10 @@ def plan_exact(current_ids, pool, bank, k):
     x = pulp.LpVariable.dicts("sq", idx, cat="Binary")
     y = pulp.LpVariable.dicts("xi", idx, cat="Binary")
     c = pulp.LpVariable.dicts("cap", idx, cat="Binary")
-    prob += pulp.lpSum(pred[i] * y[i] for i in idx) + pulp.lpSum(pred[i] * c[i] for i in idx)
+    objective = (pulp.lpSum(pred[i] * y[i] for i in idx)
+                 + pulp.lpSum(pred[i] * c[i] for i in idx))
+    objective = objective - conflict_dock(prob, y, p, CONFLICT_PENALTY)
+    prob += objective
     for i in idx:
         prob += y[i] <= x[i]
         prob += c[i] <= y[i]
@@ -403,15 +409,11 @@ def build_advice(team_id, gw=None, ft_override=None):
     used_chips = chips_used(history, gw)
 
     preds_all = predict_all(SEASON)
-    pool = preds_all[preds_all["gw"] == gw]
+    pool = preds_all[preds_all["gw"] == gw].copy()
     fxmap = team_fixtures(SEASON, gw, 4)
-    squad = pool[pool["id"].isin(ids)].copy()
-    if len(squad) < 11:
-        return {"ok": False, "team_id": team_id, "gw": gw, "season": SEASON,
-                "error": "Not enough player data to advise this gameweek."}
 
-    # Attach each player's fixture id for this gameweek so the XI optimiser is
-    # stack-aware (won't start opposing players from the same match).
+    # Attach each player's fixture id for this gameweek so the XI *and* transfer
+    # optimisers are stack-aware (won't stack opposing players from one match).
     _hist = load_history()
     if "gw" not in _hist.columns and "GW" in _hist.columns:
         _hist = _hist.rename(columns={"GW": "gw"})
@@ -419,7 +421,22 @@ def build_advice(team_id, gw=None, ft_override=None):
         _hist = _hist[_hist["season"] == SEASON]
     if "fixture" in _hist.columns:
         _fx = _hist[_hist["gw"] == gw]
-        squad["match"] = squad["id"].map(dict(zip(_fx["element"], _fx["fixture"])))
+        pool["match"] = pool["id"].map(dict(zip(_fx["element"], _fx["fixture"])))
+
+    # Live availability: injured/suspended players score 0 (so they drop out of
+    # your XI and become transfer-out candidates); unavailable players you don't
+    # own are removed from the buy pool, while your own stay in so they can be
+    # replaced. Only applies to the live season, not the finished-season demo.
+    if DATA_SOURCE == "live":
+        from src.ingestion.live import availability
+        mult = pool["id"].map(availability()).fillna(1.0)
+        pool["pred"] = pool["pred"] * mult
+        pool = pool[(mult > 0) | pool["id"].isin(ids)]
+
+    squad = pool[pool["id"].isin(ids)].copy()
+    if len(squad) < 11:
+        return {"ok": False, "team_id": team_id, "gw": gw, "season": SEASON,
+                "error": "Not enough player data to advise this gameweek."}
 
     base_val, base_xi = optimize_xi(squad, conflict_penalty=CONFLICT_PENALTY)
     cap = base_xi[base_xi["captain"] == 1].iloc[0]
