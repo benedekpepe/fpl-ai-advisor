@@ -170,6 +170,26 @@ def preseason_predictions(client: FPLClient = None,
                "pred"]].rename(columns={"value": "price"})
 
 
+def fixture_ticker(fixtures: list, teams: list, gw: int, n: int = 4) -> dict:
+    """{team_id: [{"opp": short_name, "diff": 1-5, "home": bool}, ...]} for the
+    next n gameweeks from `gw`, using FPL's own fixture difficulty ratings."""
+    short = {t["id"]: t["short_name"] for t in teams}
+    rows: dict = {}
+    for f in fixtures:
+        ev = f.get("event")
+        if ev is None or ev < gw:
+            continue
+        h, a = f["team_h"], f["team_a"]
+        rows.setdefault(h, []).append((ev, short.get(a, "?"), f.get("team_h_difficulty") or 3, True))
+        rows.setdefault(a, []).append((ev, short.get(h, "?"), f.get("team_a_difficulty") or 3, False))
+    out = {}
+    for tid, lst in rows.items():
+        lst.sort(key=lambda x: x[0])
+        out[tid] = [{"opp": opp, "diff": int(diff), "home": home}
+                    for _, opp, diff, home in lst[:n]]
+    return out
+
+
 def flagged_players(bootstrap: dict) -> pd.DataFrame:
     """Players the live API marks as not fully available (injured/doubtful/etc)."""
     rows = [{"name": e.get("web_name"), "price": e["now_cost"],

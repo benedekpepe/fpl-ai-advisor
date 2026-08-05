@@ -440,19 +440,21 @@ def render_html(a):
 # ---------------------------------------------------------------- gate
 @st.cache_data(ttl=3600, show_spinner=False)
 def _preseason_data():
-    """Live projections + injury flags for the upcoming (unplayed) gameweek."""
+    """Live projections + injury flags + fixture ticker for the upcoming gameweek."""
     from src.ingestion.fpl_client import FPLClient
-    from src.ingestion.live import availability
-    from src.model.preseason import preseason_predictions, flagged_players
+    from src.ingestion.live import availability, current_gameweek
+    from src.model.preseason import preseason_predictions, flagged_players, fixture_ticker
     client = FPLClient()
     bootstrap = client.get_bootstrap_static()
+    fixtures = client.get_fixtures()
     preds = preseason_predictions(client)
     team_short = {t["id"]: t["short_name"] for t in bootstrap["teams"]}
-    return preds, flagged_players(bootstrap), availability(client), team_short
+    ticker = fixture_ticker(fixtures, bootstrap["teams"], current_gameweek(client) or 1)
+    return preds, flagged_players(bootstrap), availability(client), team_short, ticker
 
 
-def _preseason_rows(squad, team_short):
-    """Turn an optimised squad into pitch_html rows."""
+def _preseason_rows(squad, team_short, ticker):
+    """Turn an optimised squad into pitch_html rows (with the fixture ticker)."""
     rows = []
     for _, r in squad.iterrows():
         if r["starting"] == 1:
@@ -464,7 +466,7 @@ def _preseason_rows(squad, team_short):
         rows.append({"role": role, "position": r["position"], "name": r["name"],
                      "pred": float(r["pred"]), "captain": bool(r["captain"]),
                      "team": team_short.get(r["team"], r["team"]),
-                     "price": int(r["price"])})
+                     "price": int(r["price"]), "fix": ticker.get(r["team"], [])})
     return rows
 
 
@@ -477,7 +479,7 @@ def preseason_view():
                 unsafe_allow_html=True)
     with st.spinner("Fetching live prices, fixtures and last season's form…"):
         try:
-            preds, flagged, avail, team_short = _preseason_data()
+            preds, flagged, avail, team_short, ticker = _preseason_data()
         except Exception as exc:  # noqa: BLE001
             st.error(f"Couldn't reach the live FPL data: {exc}")
             return
@@ -499,9 +501,9 @@ def preseason_view():
     from src.model.preseason import CONFLICT_PENALTY
     squad = optimize_squad(preds, force_ids=force_ids or None,
                            conflict_penalty=CONFLICT_PENALTY)
-    rows = _preseason_rows(squad, team_short)
-    st.markdown("<div class='fpl'>" + pitch_html(rows) + summary_caption(rows) + "</div>",
-                unsafe_allow_html=True)
+    rows = _preseason_rows(squad, team_short, ticker)
+    st.markdown("<div class='fpl'>" + pitch_html(rows) + FX_LEGEND + summary_caption(rows)
+                + "</div>", unsafe_allow_html=True)
 
     notable = flagged[(flagged["price"] >= 55) | flagged["chance"].notna()] \
         if len(flagged) else flagged
