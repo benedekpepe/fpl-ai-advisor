@@ -39,6 +39,12 @@ BASES = ["total_points", "minutes", "expected_goals", "expected_assists",
 SEED_COLS = BASES + ["starts_rate_5", "cum_ppg"]
 
 
+def _full_name(el: dict) -> str:
+    """Full display name so the pitch tooltip shows more than the short name."""
+    full = f"{el.get('first_name', '')} {el.get('second_name', '')}".strip()
+    return full or el.get("web_name") or ""
+
+
 def _csv(url: str) -> pd.DataFrame:
     return pd.read_csv(io.StringIO(
         requests.get(url, timeout=60).content.decode("utf-8", "replace")))
@@ -111,7 +117,7 @@ def preseason_frame(bootstrap: dict, fixtures: list,
         if o is None:            # team not playing this GW (blank) -> skip
             continue
         rows.append({
-            "id": e["id"], "code": e["code"], "name": e.get("web_name"),
+            "id": e["id"], "code": e["code"], "name": _full_name(e),
             "position": POSITION.get(e["element_type"]), "team": e["team"],
             "value": e["now_cost"], "opponent_team": o[0], "was_home": o[1],
         })
