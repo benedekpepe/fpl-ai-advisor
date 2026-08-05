@@ -14,7 +14,7 @@ scipy>=1.11
 pulp>=2.7
 
 # --- dashboard ---
-streamlit>=1.32
+streamlit==1.51.0
 
 # (future) API: fastapi, uvicorn
 
