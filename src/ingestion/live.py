@@ -24,7 +24,7 @@ Wiring (done once, in August):
 import pandas as pd
 
 from src.ingestion.fpl_client import FPLClient
-from src.config import CURRENT_SEASON
+from src.config import ACTIVE_SEASON
 
 # FPL element_type -> our position label.
 POSITION = {1: "GK", 2: "DEF", 3: "MID", 4: "FWD"}
@@ -109,7 +109,7 @@ def current_season_frame(client: FPLClient | None = None) -> pd.DataFrame:
     rows = []
     for el in boot["elements"]:
         meta = {
-            "season": CURRENT_SEASON,
+            "season": ACTIVE_SEASON,
             "element": el["id"],
             "name": el.get("web_name"),
             "position": POSITION.get(el.get("element_type")),

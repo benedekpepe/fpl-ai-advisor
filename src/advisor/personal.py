@@ -26,7 +26,7 @@ from src.model.model import attach_opponent_strength
 from src.optim.optimizer import optimize_squad, conflict_dock
 from src.data.teams import teams_meta
 from src.config import (
-    CURRENT_SEASON as SEASON, FPL_API as FPL, MODEL_PATH, CONFLICT_PENALTY,
+    ACTIVE_SEASON as SEASON, FPL_API as FPL, MODEL_PATH, CONFLICT_PENALTY,
     SQUAD, XI_MIN, XI_MAX, MAX_PER_CLUB, HIT, MAX_FT, BANK_THRESHOLD,
     POSITION_ORDER as ORDER, CHIP_LABEL, HALF_DEADLINE, HALF_LABEL,
 )
@@ -381,8 +381,18 @@ def team_fixtures(season, from_gw, n=4):
     return out
 
 
-def build_advice(team_id, gw, ft_override=None):
-    """Compute the full weekly recommendation and return it as structured data."""
+def build_advice(team_id, gw=None, ft_override=None):
+    """Compute the full weekly recommendation and return it as structured data.
+
+    `gw` may be omitted in live mode — the current gameweek is then detected from
+    the live FPL API.
+    """
+    if gw is None:
+        from src.ingestion.live import current_gameweek
+        gw = current_gameweek()
+        if gw is None:
+            return {"ok": False, "team_id": team_id, "gw": None, "season": SEASON,
+                    "error": "Could not detect the current gameweek."}
     picks = get_picks(team_id, gw)
     ids = [p["element"] for p in picks["picks"]]
     bank = picks.get("entry_history", {}).get("bank", 0)

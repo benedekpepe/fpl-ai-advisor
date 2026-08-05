@@ -23,7 +23,8 @@ TEAMS_URL = VAASTAV_BASE + "/{season}/teams.csv"
 PLAYERS_RAW_URL = VAASTAV_BASE + "/{season}/players_raw.csv"
 
 # ----------------------------------------------------------------- seasons
-CURRENT_SEASON = "2025-26"
+CURRENT_SEASON = "2025-26"          # the finished season the hosted demo runs on
+LIVE_SEASON = "2026-27"             # the live season (used when DATA_SOURCE=live)
 TEST_SEASON = "2024-25"                                  # out-of-time backtest
 SEED_SEASON = "2025-26"          # last completed season, used to seed pre-season/GW1 cold-start
 
@@ -38,6 +39,11 @@ CONFLICT_PENALTY = 0.35
 #   "live" -> the live FPL API (the 2026-27 in-season mode; see ingestion/live.py)
 # Override with the FPL_DATA_SOURCE environment variable (e.g. on deploy).
 DATA_SOURCE = os.getenv("FPL_DATA_SOURCE", "db")
+
+# The season the app is actually working on: the live season in live mode,
+# otherwise the demo season. Everything in-season (predictions, fixtures,
+# advice) keys off this so the demo (csv/db) and live (2026-27) never mix.
+ACTIVE_SEASON = LIVE_SEASON if DATA_SOURCE == "live" else CURRENT_SEASON
 
 # ------------------------------------------------------------------- model
 LGBM_PARAMS = dict(

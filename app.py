@@ -518,6 +518,36 @@ def preseason_view():
                     unsafe_allow_html=True)
 
 
+def live_advice_view():
+    """In-season advice on the live season, with the gameweek auto-detected."""
+    from src.ingestion.live import current_gameweek
+    st.markdown("<div style='color:#8a97a6;font-size:13px;margin-bottom:6px'>"
+                "Enter your FPL Team ID — advice is generated for the current "
+                "gameweek, detected automatically from the live FPL data.</div>",
+                unsafe_allow_html=True)
+    team_id = st.text_input("FPL Team ID", value="", placeholder="e.g. 1234567",
+                            help="The number in your FPL team URL: /entry/<this>/")
+    if not st.button("Get advice"):
+        return
+    if not team_id.strip().isdigit():
+        st.info("Enter your FPL Team ID above to get advice.")
+        return
+    with st.spinner("Detecting the gameweek and crunching the live numbers…"):
+        try:
+            gw = current_gameweek()
+            if not gw or gw <= 1:
+                st.info("No completed gameweeks yet this season — switch to "
+                        "**Pre-season squad builder** above to build your GW1 team.")
+                return
+            advice = build_advice(int(team_id))      # gameweek auto-detected
+            if not advice["ok"]:
+                st.warning(advice["error"])
+            else:
+                st.markdown(render_html(advice), unsafe_allow_html=True)
+        except Exception as exc:  # noqa: BLE001
+            st.error(f"Something went wrong: {exc}")
+
+
 def gate():
     try:
         configured = st.secrets.get("app_password")
@@ -552,6 +582,11 @@ def main():
                     horizontal=True, label_visibility="collapsed")
     if mode == "Pre-season squad builder":
         preseason_view()
+        return
+
+    from src.config import DATA_SOURCE
+    if DATA_SOURCE == "live":
+        live_advice_view()
         return
 
     with st.form("inputs"):
