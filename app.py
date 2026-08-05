@@ -496,7 +496,9 @@ def preseason_view():
             continue
         force_ids.append(int(row["id"]))
 
-    squad = optimize_squad(preds, force_ids=force_ids or None)
+    from src.model.preseason import CONFLICT_PENALTY
+    squad = optimize_squad(preds, force_ids=force_ids or None,
+                           conflict_penalty=CONFLICT_PENALTY)
     rows = _preseason_rows(squad, team_short)
     st.markdown("<div class='fpl'>" + pitch_html(rows) + summary_caption(rows) + "</div>",
                 unsafe_allow_html=True)

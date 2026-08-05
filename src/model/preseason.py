@@ -37,6 +37,12 @@ BASES = ["total_points", "minutes", "expected_goals", "expected_assists",
          "expected_goal_involvements", "bps", "ict_index"]
 SEED_COLS = BASES + ["starts_rate_5", "cum_ppg"]
 
+# Stack-awareness: how hard to discourage starting two players who face each
+# other with opposed point sources (attacker vs defender/keeper). Scales with
+# the weaker player's projection; 0 disables it. Tuned to break clear conflicts
+# without gutting the squad.
+CONFLICT_PENALTY = 0.35
+
 
 def _csv(url: str) -> pd.DataFrame:
     return pd.read_csv(io.StringIO(
@@ -154,8 +160,8 @@ def preseason_predictions(client: FPLClient = None,
     if apply_availability:
         av = availability(client)
         df["pred"] = df["pred"] * df["id"].map(av).fillna(1.0)
-    return df[["id", "name", "position", "team", "value", "pred"]].rename(
-        columns={"value": "price"})
+    return df[["id", "name", "position", "team", "opponent_team", "value",
+               "pred"]].rename(columns={"value": "price", "opponent_team": "opponent"})
 
 
 def flagged_players(bootstrap: dict) -> pd.DataFrame:
@@ -173,7 +179,8 @@ def flagged_players(bootstrap: dict) -> pd.DataFrame:
 def preseason_squad(client: FPLClient = None,
                     seed_season: str = SEED_SEASON) -> pd.DataFrame:
     """The optimal 15-man squad (with XI + captain) for the upcoming gameweek."""
-    return optimize_squad(preseason_predictions(client, seed_season))
+    return optimize_squad(preseason_predictions(client, seed_season),
+                          conflict_penalty=CONFLICT_PENALTY)
 
 
 def _print_squad(squad: pd.DataFrame, preds: pd.DataFrame) -> None:
@@ -241,11 +248,13 @@ def main() -> None:
         preds, [n.strip() for n in args.pin.split(",") if n.strip()],
         availability(client))
 
-    squad = optimize_squad(preds, force_ids=force_ids or None)
+    squad = optimize_squad(preds, force_ids=force_ids or None,
+                           conflict_penalty=CONFLICT_PENALTY)
     _print_squad(squad, preds)
 
     if force_ids:
-        cost = _xi_points(squad) - _xi_points(optimize_squad(preds))
+        cost = _xi_points(squad) - _xi_points(
+            optimize_squad(preds, conflict_penalty=CONFLICT_PENALTY))
         print(f"\nForced picks cost: {cost:+.1f} projected pts vs the "
               f"unconstrained squad")
 
