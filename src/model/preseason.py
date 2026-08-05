@@ -195,17 +195,26 @@ def _print_squad(squad: pd.DataFrame, preds: pd.DataFrame) -> None:
     print(f"\nSquad cost: £{squad['price'].sum()/10:.1f}m / £100.0m")
 
 
-def _resolve_pins(preds: pd.DataFrame, names: list) -> list:
-    """Map pinned player names to ids (best/most-played match per name)."""
+def _resolve_pins(preds: pd.DataFrame, names: list, avail: dict = None) -> list:
+    """Map pinned player names to ids (best/most-played match per name).
+
+    Players the live API marks as out (availability 0 — injured/suspended) are
+    skipped with a warning: pinning an unavailable player makes no sense.
+    """
+    avail = avail or {}
     ids = []
     for n in names:
         hit = preds[preds["name"].str.contains(n, case=False, na=False)]
-        if len(hit):
-            row = hit.sort_values("pred", ascending=False).iloc[0]
-            ids.append(int(row["id"]))
-            print(f"Pinned: {row['name']} (£{row['price'] / 10:.1f}m)")
-        else:
+        if not len(hit):
             print(f"Pin not found (ignored): {n}")
+            continue
+        row = hit.sort_values("pred", ascending=False).iloc[0]
+        pid = int(row["id"])
+        if avail.get(pid, 1.0) == 0.0:
+            print(f"Pin skipped (unavailable): {row['name']} — injured/suspended")
+            continue
+        ids.append(pid)
+        print(f"Pinned: {row['name']} (£{row['price'] / 10:.1f}m)")
     return ids
 
 
@@ -228,7 +237,9 @@ def main() -> None:
 
     client = FPLClient()
     preds = preseason_predictions(client)
-    force_ids = _resolve_pins(preds, [n.strip() for n in args.pin.split(",") if n.strip()])
+    force_ids = _resolve_pins(
+        preds, [n.strip() for n in args.pin.split(",") if n.strip()],
+        availability(client))
 
     squad = optimize_squad(preds, force_ids=force_ids or None)
     _print_squad(squad, preds)

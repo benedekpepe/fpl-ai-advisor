@@ -3,6 +3,7 @@
 Run locally (with the Postgres container up and the model trained):
     streamlit run app.py
 """
+import pandas as pd
 import streamlit as st
 
 from src.advisor.personal import build_advice
@@ -437,6 +438,84 @@ def render_html(a):
 
 
 # ---------------------------------------------------------------- gate
+@st.cache_data(ttl=3600, show_spinner=False)
+def _preseason_data():
+    """Live projections + injury flags for the upcoming (unplayed) gameweek."""
+    from src.ingestion.fpl_client import FPLClient
+    from src.ingestion.live import availability
+    from src.model.preseason import preseason_predictions, flagged_players
+    client = FPLClient()
+    bootstrap = client.get_bootstrap_static()
+    preds = preseason_predictions(client)
+    team_short = {t["id"]: t["short_name"] for t in bootstrap["teams"]}
+    return preds, flagged_players(bootstrap), availability(client), team_short
+
+
+def _preseason_rows(squad, team_short):
+    """Turn an optimised squad into pitch_html rows."""
+    rows = []
+    for _, r in squad.iterrows():
+        if r["starting"] == 1:
+            role = "start"
+        elif r["position"] == "GK":
+            role = "benchgk"
+        else:
+            role = "bench"
+        rows.append({"role": role, "position": r["position"], "name": r["name"],
+                     "pred": float(r["pred"]), "captain": bool(r["captain"]),
+                     "team": team_short.get(r["team"], r["team"]),
+                     "price": int(r["price"])})
+    return rows
+
+
+def preseason_view():
+    from src.optim.optimizer import optimize_squad
+    st.markdown("<div style='color:#8a97a6;font-size:13px;margin:2px 0 10px'>"
+                "Build an optimal 15-man squad for the upcoming gameweek — before "
+                "any match is played — seeded from last season's form, with injured "
+                "players excluded. Pin must-have picks if you like.</div>",
+                unsafe_allow_html=True)
+    with st.spinner("Fetching live prices, fixtures and last season's form…"):
+        try:
+            preds, flagged, avail, team_short = _preseason_data()
+        except Exception as exc:  # noqa: BLE001
+            st.error(f"Couldn't reach the live FPL data: {exc}")
+            return
+
+    names = preds.sort_values("pred", ascending=False)["name"].tolist()
+    pins = st.multiselect("Pin must-have players (optional)", names,
+                          help="Forced into the squad. Injured players can't be pinned.")
+    if not st.button("Build squad"):
+        return
+
+    force_ids = []
+    for n in pins:
+        row = preds[preds["name"] == n].iloc[0]
+        if avail.get(int(row["id"]), 1.0) == 0.0:
+            st.warning(f"{n} is injured/suspended — not pinned.")
+            continue
+        force_ids.append(int(row["id"]))
+
+    squad = optimize_squad(preds, force_ids=force_ids or None)
+    rows = _preseason_rows(squad, team_short)
+    st.markdown("<div class='fpl'>" + pitch_html(rows) + summary_caption(rows) + "</div>",
+                unsafe_allow_html=True)
+
+    notable = flagged[(flagged["price"] >= 55) | flagged["chance"].notna()] \
+        if len(flagged) else flagged
+    if len(notable):
+        items = "".join(
+            f"<div class='note' style='margin:2px 0'>{r['position']} · "
+            f"<b>{r['name']}</b> £{r['price']/10:.1f}m — {r['status']}"
+            f"{(' ' + str(int(r['chance'])) + '%') if pd.notna(r['chance']) else ''}"
+            f"{(' · ' + r['news']) if r['news'] else ''}</div>"
+            for _, r in notable.head(15).iterrows())
+        st.markdown("<div class='fpl' style='margin-top:12px'>"
+                    "<div class='note' style='font-weight:700;margin-bottom:4px'>"
+                    "Injury / availability flags (live)</div>" + items + "</div>",
+                    unsafe_allow_html=True)
+
+
 def gate():
     try:
         configured = st.secrets.get("app_password")
@@ -465,6 +544,12 @@ def main():
                 "</div>" + CSS, unsafe_allow_html=True)
 
     if not gate():
+        return
+
+    mode = st.radio("Mode", ["Gameweek advice", "Pre-season squad builder"],
+                    horizontal=True, label_visibility="collapsed")
+    if mode == "Pre-season squad builder":
+        preseason_view()
         return
 
     with st.form("inputs"):
