@@ -4,31 +4,49 @@
 
 **Live demo: https://fpl-ai-advisor.streamlit.app/**
 
-A weekly decision aid for [Fantasy Premier League](https://fantasy.premierleague.com/).
-Give it a team ID and a gameweek, and it recommends a **captain**, the best
-**transfer(s)** (weighing form against upcoming fixtures, including whether a
-−4 hit is worth taking), and **chip timing** for the Wildcard, Bench Boost,
-Triple Captain and Free Hit — all driven by a points-prediction model and a
-constrained squad optimiser, behind a Streamlit dashboard.
+A decision aid for [Fantasy Premier League](https://fantasy.premierleague.com/).
+Before the season starts it **builds your opening squad from scratch**; once
+gameweeks are played it advises the best **captain**, **transfer(s)** (weighing
+form against fixtures, including whether a −4 hit is worth taking) and **chip
+timing** — all driven by a points-prediction model and a constrained,
+stack-aware squad optimiser, behind a Streamlit dashboard.
 
 > **Unofficial.** Not affiliated with, endorsed by, or connected to the Premier
 > League or Fantasy Premier League. Built for personal use and as a portfolio
 > project.
 
-> **Status.** The live demo runs on the completed 2025-26 season — enter a team
-> ID and a past gameweek to see it in action. A live mode for the 2026-27 season
-> (live predictions, player availability, automatic gameweek detection) is
-> planned ahead of kickoff.
+> **Status.** Runs live for the 2026-27 season (`FPL_DATA_SOURCE=live`): before
+> gameweek 1 it shows the **squad builder**; once a gameweek is played it
+> switches to **weekly advice** on your team — the app detects which from the
+> live gameweek. A finished-season **demo** (2025-26) is also available
+> (`FPL_DATA_SOURCE=csv`), where you can try the advisor on any team ID and a
+> past gameweek.
+
+## Two modes
+
+- **Squad builder** — the optimal 15-man squad built from scratch: for the start
+  of the season (before any gameweek), or any time you want a from-scratch team
+  for a Wildcard or Free Hit. Optionally **pin** must-have players. When there's
+  no current-season form yet, projections are **seeded from last season**.
+- **Weekly advice** — once the season is underway: captain, transfer(s) with the
+  hit math, best XI, and chip timing, computed from your actual squad.
 
 ## What it does
 
+- **Squad builder** — the best legal 15 (2/5/5/3, valid formation, ≤ 3 per club,
+  budget), with the starting XI and captain, and optional pinned picks.
 - **Captain** — the highest projected scorer in your starting XI.
-- **Transfers** — the swap (or swaps) that add the most projected points, with
-  the hit math made explicit (a move is only urged when the gain clears the −4).
+- **Transfers** — the swap(s) that add the most projected points, with the hit
+  math made explicit (a move is only urged when the gain clears the −4).
 - **Best XI** — the optimal lineup and formation from your current 15.
 - **Chip timing** — for each unused chip it finds its best week in the remaining
-  half of the season, and only says *play now* when this week **is** that peak —
-  so the headline call never contradicts the per-chip detail.
+  half of the season, and only says *play now* when this week **is** that peak.
+- **Availability-aware** — injured, suspended or loaned-out players are excluded
+  from selection, benched if you own them, become transfer-out candidates, and
+  are never recommended as buys.
+- **Stack-aware** — it won't start (or transfer in) two players who face each
+  other with opposed point sources — an attacker against a defender/keeper — so
+  you don't pick both sides of the same match.
 
 ## Screenshots
 
@@ -37,7 +55,8 @@ constrained squad optimiser, behind a Streamlit dashboard.
 
 ## How it works
 
-1. **Ingestion** — the public FPL API for live team state, and the community
+1. **Ingestion** — the public FPL API for live team state, prices, fixtures and
+   availability, and the community
    [vaastav/Fantasy-Premier-League](https://github.com/vaastav/Fantasy-Premier-League)
    dataset for per-gameweek history. Per-gameweek data is read through a
    configurable source (see *Data source* below).
@@ -46,15 +65,21 @@ constrained squad optimiser, behind a Streamlit dashboard.
    home/away, and opponent attack/defence strength as fixture difficulty.
 3. **Model** — a two-stage expected-points model: `P(plays) × E[points | plays]`,
    each stage a LightGBM model. Splitting "will they play" from "how well" handles
-   rotation and injuries-by-proxy better than a single regressor.
-4. **Optimiser** — a single mixed-integer program (PuLP) that picks the 15-man
-   squad, the starting XI and the captain to maximise projected points under the
-   real rules: 2/5/5/3 by position, a valid formation, max three per club, and
-   the budget.
-5. **Advisor** — reconstructs your free-transfer count, runs the transfer/hit
-   math, and applies the chip-timing logic above.
-6. **Dashboard** — a Streamlit app that renders the pitch, the recommended moves,
-   and the chip plan.
+   rotation better than a single regressor.
+4. **Cold start** — before any gameweek there is no current-season form, so each
+   player's form is seeded from their **previous-season** per-game averages,
+   joined to this season's players by their permanent FPL `code` (ids change
+   between seasons). Players with no previous-season data (new signings, promoted
+   clubs, youth) get a position + price based estimate.
+5. **Optimiser** — a mixed-integer program (PuLP) that picks the 15-man squad,
+   the starting XI and the captain to maximise projected points (captain counted
+   twice) under the real rules, with an optional **stack-aware** penalty that
+   discourages starting opposing players from the same match. The same engine
+   powers the builder, the best-XI choice and the transfer planner.
+6. **Advisor** — reconstructs your free-transfer count, applies live availability,
+   runs the transfer/hit math (stack-aware) and the chip-timing logic.
+7. **Dashboard** — a Streamlit app that renders the pitch, the recommended moves
+   and the chip plan, and shows the right mode for where the season is.
 
 ### Data source
 
@@ -65,9 +90,10 @@ in-season live mode:
 - **`db`** (default) — local Postgres, the historical dataset loaded by the
   ingestion scripts; used to train and backtest the model.
 - **`csv`** — the vaastav CSVs pulled directly at runtime, no database; this is
-  what the hosted demo uses.
-- **`live`** — the live FPL API (current-gameweek detection and player
-  availability), for in-season use in 2026-27; see `src/ingestion/live.py`.
+  what the finished-season demo uses (2025-26).
+- **`live`** — the live FPL API (2026-27): current-gameweek detection, player
+  availability and the squad builder; see `src/ingestion/live.py` and
+  `src/model/preseason.py`.
 
 ## Model performance
 
@@ -85,7 +111,7 @@ and RMSE), while **FPL's own xP remains the strongest** — unsurprising, as it 
 access to information this model doesn't (team news, confirmed lineups). Ranking
 ability is close across all three. The advisor's edge isn't in out-predicting
 FPL's internal model; it's in turning predictions into concrete, rules-aware
-captain / transfer / chip decisions with the trade-offs shown.
+squad / captain / transfer / chip decisions with the trade-offs shown.
 
 Regenerate these numbers any time with `python -m src.model.model` (the
 single-stage baseline is `python -m src.model.baseline`).
@@ -99,7 +125,7 @@ Streamlit.
 
 ```
 fpl-ai-advisor/
-├── app.py                  # Streamlit dashboard
+├── app.py                  # Streamlit dashboard (auto-detects builder vs advice)
 ├── conftest.py             # makes `src` importable in tests
 ├── docker-compose.yml      # local Postgres service
 ├── requirements.txt
@@ -110,23 +136,27 @@ fpl-ai-advisor/
 │   ├── data/               # loaders: history (db / csv), team strengths
 │   ├── db/                 # schema, connection, init
 │   ├── ingestion/          # FPL API client, historical loader, live mode
-│   ├── model/              # features, production model, baseline
-│   ├── optim/              # squad / XI / captain optimiser
+│   ├── model/              # features, model, baseline, pre-season cold start
+│   ├── optim/              # stack-aware squad / XI / captain optimiser
 │   └── advisor/            # advice assembly + CLI
 └── tests/                  # unit tests (no DB/model/network)
 ```
 
 ## Getting started
 
-The dashboard reads per-gameweek data from a configurable source (the
+The app reads per-gameweek data from a configurable source (the
 `FPL_DATA_SOURCE` environment variable — see *Data source* above).
 
-**Run without a database** (the quickest way to try it): create the virtual
-environment and install dependencies (step 2 below), then:
+**Try it without a database.** Create the virtual environment and install
+dependencies (step 2 below), then run either mode:
 
 ```bash
+# Finished-season demo (2025-26): enter a team ID + a past gameweek in the app
 FPL_DATA_SOURCE=csv streamlit run app.py
-# Windows (PowerShell): $env:FPL_DATA_SOURCE="csv"; streamlit run app.py
+
+# Live (2026-27): squad builder before GW1, weekly advice once a gameweek is played
+FPL_DATA_SOURCE=live streamlit run app.py
+# Windows (PowerShell): $env:FPL_DATA_SOURCE="live"; streamlit run app.py
 ```
 
 For the full local setup with Postgres (used to train the model and ingest live
@@ -176,12 +206,6 @@ backtest the model):
 python -m src.ingestion.load_history 2022-23 2023-24 2024-25 2025-26
 ```
 
-Optionally, to accumulate live current-season state (prices, ownership):
-
-```bash
-python -m src.ingestion.ingest_fpl
-```
-
 ### 6. Train the model
 
 ```bash
@@ -191,17 +215,23 @@ python -m src.model.model
 This trains the two-stage model, prints the backtest table above, and saves the
 model to `models/`.
 
-### 7. Run the dashboard
+### 7. Run the app
 
 ```bash
-streamlit run app.py
+FPL_DATA_SOURCE=live streamlit run app.py
 ```
-
-Enter your FPL team ID and a gameweek to get advice.
 
 ## Command line
 
-The advisor also runs without the dashboard:
+Build an opening squad for the upcoming (unplayed) gameweek from the live API,
+seeded from last season — optionally pinning must-have players:
+
+```bash
+python -m src.model.preseason               # optimal opening squad
+python -m src.model.preseason --pin Haaland # force a must-have pick
+```
+
+The in-season advisor also runs without the dashboard:
 
 ```bash
 python -m src.advisor.personal <team_id> <gameweek>
@@ -223,28 +253,28 @@ They also run automatically on every push and pull request via GitHub Actions
 
 ## Deployment
 
-The hosted demo runs on Streamlit Community Cloud with **no database** — it reads
-the season's data from the vaastav CSVs at runtime. Two settings on the host:
+The app runs on Streamlit Community Cloud with **no database**. One setting on
+the host decides what it is:
 
-- environment variable `FPL_DATA_SOURCE=csv`
-- (optional) an `app_password` secret to gate access to invited users
+- `FPL_DATA_SOURCE=live` — the live 2026-27 tool: squad builder before GW1,
+  weekly advice once gameweeks are played.
+- `FPL_DATA_SOURCE=csv` — the finished-season demo (2025-26), reading the vaastav
+  CSVs at runtime; anyone can try the advisor with a team ID and a past gameweek.
 
-For the 2026-27 season, switching `FPL_DATA_SOURCE=live` moves the same app onto
-the live FPL API — current-gameweek detection and player availability included —
-with no other code change (see `src/ingestion/live.py`).
+An optional `app_password` secret can gate access to invited users.
 
 ## Notes and limitations
 
-- The model uses form, fixtures and home/away, but **not** live injury or
-  suspension status (that data isn't available historically, so it can't be
-  backtested honestly). The Wildcard logic is a reasonable proxy. The live mode
-  incorporates the FPL availability flags (`status`, `chance_of_playing`), which
-  should sharpen real-world advice.
+- **Cold start.** Before any gameweek there's no current-season form, so early
+  projections are seeded from last season and are correspondingly uncertain; the
+  seed also compresses the gap between elite and mid-price players, so premiums
+  and captaincy calls are worth your own judgement (that's what `--pin` is for).
+- **Availability** comes from the live API (`status`, `chance_of_playing`), so it
+  is only applied in live mode, not in the finished-season demo.
 - It projects your **current** squad forward, so it can't foresee future squad
   improvements from transfers — early-window chip peaks can read a little eager.
 - FPL has high inherent variance. The aim is systematically better-than-gut
   decisions with honest uncertainty, not a crystal ball.
-- The community history dataset lags the live season by a few gameweeks.
 
 ## License & data
 
