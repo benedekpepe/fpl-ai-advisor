@@ -26,15 +26,17 @@ stack-aware squad optimiser, behind a Streamlit dashboard.
 
 - **Squad builder** — the optimal 15-man squad built from scratch: for the start
   of the season (before any gameweek), or any time you want a from-scratch team
-  for a Wildcard or Free Hit. Optionally **pin** must-have players. When there's
-  no current-season form yet, projections are **seeded from last season**.
+  for a Wildcard or Free Hit. Optionally **pin** must-have players, and see each
+  pick's upcoming fixtures. When there's no current-season form yet, projections
+  are **seeded from last season**.
 - **Weekly advice** — once the season is underway: captain, transfer(s) with the
   hit math, best XI, and chip timing, computed from your actual squad.
 
 ## What it does
 
 - **Squad builder** — the best legal 15 (2/5/5/3, valid formation, ≤ 3 per club,
-  budget), with the starting XI and captain, and optional pinned picks.
+  budget), with the starting XI, captain, optional pinned picks, and each
+  player's upcoming fixtures shown on the pitch.
 - **Captain** — the highest projected scorer in your starting XI.
 - **Transfers** — the swap(s) that add the most projected points, with the hit
   math made explicit (a move is only urged when the gain clears the −4).
@@ -43,7 +45,8 @@ stack-aware squad optimiser, behind a Streamlit dashboard.
   half of the season, and only says *play now* when this week **is** that peak.
 - **Availability-aware** — injured, suspended or loaned-out players are excluded
   from selection, benched if you own them, become transfer-out candidates, and
-  are never recommended as buys.
+  are never recommended as buys; any injured or doubtful players in your own
+  squad are also flagged at the top of the weekly advice.
 - **Stack-aware** — it won't start (or transfer in) two players who face each
   other with opposed point sources — an attacker against a defender/keeper — so
   you don't pick both sides of the same match.
