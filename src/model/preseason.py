@@ -163,6 +163,8 @@ def preseason_predictions(client: FPLClient = None,
     df["pred"] = clf.predict_proba(df[cols])[:, 1] * reg.predict(df[cols])
     if apply_availability:
         av = availability(client)
+        mult = df["id"].map(av).fillna(1.0)
+        df = df[mult > 0].copy()          # drop unavailable (injured/suspended/loaned)
         df["pred"] = df["pred"] * df["id"].map(av).fillna(1.0)
     return df[["id", "name", "position", "team", "match", "value",
                "pred"]].rename(columns={"value": "price"})
