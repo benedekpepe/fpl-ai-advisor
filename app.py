@@ -548,6 +548,58 @@ def live_advice_view():
             st.error(f"Something went wrong: {exc}")
 
 
+@st.cache_data(ttl=1800, show_spinner=False)
+def _live_gameweek():
+    from src.ingestion.live import current_gameweek
+    try:
+        return current_gameweek()
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _live_home():
+    """Live-season home: show the right tool for where the season is."""
+    gw = _live_gameweek()
+    if not gw or gw <= 1:
+        st.caption("The season hasn't kicked off yet — build your opening squad below.")
+        preseason_view()
+        return
+    choice = st.radio("Mode", ["Weekly advice", "Build from scratch"],
+                      horizontal=True, label_visibility="collapsed")
+    if choice == "Build from scratch":
+        st.caption("Optimal squad from scratch — handy for a Wildcard or Free Hit.")
+        preseason_view()
+    else:
+        live_advice_view()
+
+
+def _demo_advice():
+    """Finished-season demo: try the advisor on any team + past gameweek."""
+    st.caption("Demo — running on the finished 2025-26 season. Enter any team ID "
+               "and a past gameweek to see the advisor in action.")
+    with st.form("inputs"):
+        team_id = st.text_input("FPL Team ID", value="", placeholder="e.g. 1234567",
+                                help="The number in your FPL team URL: /entry/<this>/")
+        gw = st.select_slider("Gameweek", options=list(range(1, 39)), value=6)
+        submitted = st.form_submit_button("Get advice")
+    if submitted:
+        if not team_id.strip():
+            st.info("Enter your FPL Team ID above to get advice.")
+            return
+        if not team_id.strip().isdigit():
+            st.error("Team id must be a number (find it in your FPL team URL).")
+            return
+        with st.spinner("Crunching the season's numbers and optimising…"):
+            try:
+                advice = build_advice(int(team_id), int(gw))
+                if not advice["ok"]:
+                    st.warning(advice["error"])
+                else:
+                    st.markdown(render_html(advice), unsafe_allow_html=True)
+            except Exception as exc:  # noqa: BLE001
+                st.error(f"Something went wrong: {exc}")
+
+
 def gate():
     try:
         configured = st.secrets.get("app_password")
@@ -578,45 +630,11 @@ def main():
     if not gate():
         return
 
-    mode = st.radio("Mode", ["Gameweek advice", "Pre-season squad builder"],
-                    horizontal=True, label_visibility="collapsed")
-    if mode == "Pre-season squad builder":
-        preseason_view()
-        return
-
     from src.config import DATA_SOURCE
     if DATA_SOURCE == "live":
-        live_advice_view()
-        return
-
-    with st.form("inputs"):
-        st.markdown("<div style='color:#8a97a6;font-size:13px;margin-bottom:4px'>Enter your FPL Team ID "
-                    "and a gameweek for a data-driven weekly plan.</div>", unsafe_allow_html=True)
-        team_id = st.text_input("FPL Team ID", value="", placeholder="e.g. 1234567",
-                                help="The number in your FPL team URL: /entry/<this>/")
-        gw = st.select_slider("Gameweek", options=list(range(1, 39)), value=6)
-        st.caption("Next season the gameweek will auto-detect; for now pick one.")
-        submitted = st.form_submit_button("Get advice")
-
-    if submitted:
-        if not team_id.strip():
-            st.info("Enter your FPL Team ID above to get advice.")
-            return
-        if not team_id.strip().isdigit():
-            st.error("Team id must be a number (find it in your FPL team URL).")
-            return
-        with st.spinner("Crunching the season's numbers and optimising — the first run "
-                        "takes up to a minute; after that it's quick…"):
-            try:
-                advice = build_advice(int(team_id), int(gw))
-                if not advice["ok"]:
-                    st.warning(advice["error"])
-                else:
-                    st.markdown(render_html(advice), unsafe_allow_html=True)
-            except Exception as exc:  # noqa: BLE001
-                st.error(f"Something went wrong: {exc}")
-                st.caption("Is the Postgres container running and the model trained? "
-                           "The advisor needs both, just like the CLI.")
+        _live_home()
+    else:
+        _demo_advice()
 
 
 if __name__ == "__main__":
