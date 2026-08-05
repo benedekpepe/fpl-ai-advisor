@@ -91,6 +91,28 @@ def client_or_default(client: FPLClient | None) -> FPLClient:
     return client or FPLClient()
 
 
+STATUS_LABEL = {"a": "available", "d": "doubtful", "i": "injured",
+                "s": "suspended", "u": "unavailable", "n": "not in squad"}
+
+
+def player_flags(ids=None, client: FPLClient | None = None) -> dict:
+    """{id: {"status": label, "chance": int|None, "news": str}} for players the
+    live API marks as not fully available (status != 'a'). Optionally limited to
+    a set of element ids (e.g. the manager's own squad)."""
+    client = client_or_default(client)
+    out = {}
+    for e in client.get_bootstrap_static()["elements"]:
+        if ids is not None and e["id"] not in ids:
+            continue
+        if e.get("status", "a") != "a":
+            out[e["id"]] = {
+                "status": STATUS_LABEL.get(e.get("status"), e.get("status")),
+                "chance": e.get("chance_of_playing_next_round"),
+                "news": (e.get("news") or "").strip(),
+            }
+    return out
+
+
 def current_season_frame(client: FPLClient | None = None) -> pd.DataFrame:
     """Per-gameweek history for the live season, shaped like the stored table.
 

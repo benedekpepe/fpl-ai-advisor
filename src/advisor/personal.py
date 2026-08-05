@@ -445,6 +445,14 @@ def build_advice(team_id, gw=None, ft_override=None):
     prc = pool.set_index("id")["price"].to_dict()
     total_money = float(squad["price"].sum()) + bank   # squad value + bank, in tenths
 
+    # Injury/availability flags for the manager's own players (live only), so the
+    # UI can surface them even when the best move this week is elsewhere.
+    squad_flags = []
+    if DATA_SOURCE == "live":
+        from src.ingestion.live import player_flags
+        for pid, info in player_flags(set(ids)).items():
+            squad_flags.append({"name": nm.get(pid, str(pid)), **info})
+
     # transfer options (0..ft+2 transfers), net of -4 hits
     options = {0: (base_val, base_xi, set(), set())}
     for k in range(1, ft + 3):
@@ -568,7 +576,7 @@ def build_advice(team_id, gw=None, ft_override=None):
         "ft": int(ft), "ft_estimated": ft_override is None, "bank": int(bank),
         "half": int(half), "half_label": HALF_LABEL[half], "deadline_gw": int(deadline_gw),
         "current_xi": _xi_rows(base_xi, fxmap), "current_captain": cap["name"],
-        "captain_options": captain_options,
+        "captain_options": captain_options, "squad_flags": squad_flags,
         "transfer": transfer,
         "chips": {"available": list(available), "table": chip_table,
                   "recommended": rec_chip, "near_deadline": near_deadline,

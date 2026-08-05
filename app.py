@@ -424,9 +424,21 @@ def render_html(a):
         else:
             cblock.append("<div class='note'>Hold — every remaining chip's best week is still ahead.</div>")
 
+    flags = a.get("squad_flags") or []
+    flagblock = ""
+    if flags:
+        items = " · ".join(
+            f"<b>{short_name(f['name'])}</b> ({f['status']}"
+            + (f", {int(f['chance'])}%" if f.get("chance") is not None else "")
+            + ")"
+            for f in flags)
+        flagblock = ("<div class='note' style='margin:10px 0;padding:8px 12px;"
+                     "border-left:3px solid #f59e0b;background:rgba(245,158,11,0.10)'>"
+                     f"⚠ Availability in your squad: {items}</div>")
+
     return (CSS + "<div class='fpl'><div class='fpl-wrap'>"
             f"<div class='rhead'>Gameweek {a['gw']} · Team {a['team_id']} · {season_fmt(a['season'])}</div>"
-            f"{meta}{hero}"
+            f"{meta}{hero}{flagblock}"
             f"<div class='lbl'>Best XI from your current squad</div>{pitch_html(a['current_xi'], bb=bb)}{FX_LEGEND}"
             f"{summary_caption(a['current_xi'])}"
             + capblock + "".join(tblock) + "".join(cblock) +
