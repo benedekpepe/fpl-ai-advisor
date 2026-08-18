@@ -38,6 +38,12 @@ BASES = ["total_points", "minutes", "expected_goals", "expected_assists",
          "expected_goal_involvements", "bps", "ict_index"]
 SEED_COLS = BASES + ["starts_rate_5", "cum_ppg"]
 
+# Cold-start projections blend the next few gameweeks so upcoming fixture
+# difficulty matters, not just GW1. Weights decay so the immediate gameweek
+# dominates but the run still counts (an easy GW1 with a brutal follow-up is
+# rated below a steady run). The length also sets how many gameweeks are blended.
+FIXTURE_WEIGHTS = [1.0, 0.6, 0.36, 0.22]
+
 
 def _full_name(el: dict) -> str:
     """Full display name so the pitch tooltip shows more than the short name."""
@@ -105,9 +111,11 @@ def _fixture_opponents(fixtures: list, gw: int) -> dict:
 
 
 def preseason_frame(bootstrap: dict, fixtures: list,
-                    seed_season: str = SEED_SEASON) -> pd.DataFrame:
-    """Build the model's 25-feature frame for the upcoming gameweek's players."""
-    gw = _next_gameweek(bootstrap["events"])
+                    seed_season: str = SEED_SEASON, gw: int = None) -> pd.DataFrame:
+    """Build the model's 25-feature frame for a gameweek's players (default: the
+    next unplayed one)."""
+    if gw is None:
+        gw = _next_gameweek(bootstrap["events"])
     opp = _fixture_opponents(fixtures, gw)
 
     strength = {t["id"]: t for t in bootstrap["teams"]}
@@ -156,11 +164,36 @@ def preseason_predictions(client: FPLClient = None,
     client = client or FPLClient()
     bootstrap = client.get_bootstrap_static()
     fixtures = client.get_fixtures()
-    df = preseason_frame(bootstrap, fixtures, seed_season)
 
     bundle = joblib.load(MODEL_PATH)
     clf, reg, cols = bundle["clf"], bundle["reg"], bundle["cols"]
-    df["pred"] = clf.predict_proba(df[cols])[:, 1] * reg.predict(df[cols])
+
+    def _predict(frame):
+        return clf.predict_proba(frame[cols])[:, 1] * reg.predict(frame[cols])
+
+    # Blend the next few gameweeks so upcoming fixture difficulty counts, not just
+    # GW1. Each gameweek is scored against its own opponent; a weighted average
+    # (GW1 heaviest, see FIXTURE_WEIGHTS) becomes the projection. Players are
+    # averaged only over the gameweeks they actually play (blanks are skipped).
+    gw0 = _next_gameweek(bootstrap["events"])
+    wsum, wtot = {}, {}
+    base = None
+    for k, gw in enumerate(range(gw0, gw0 + len(FIXTURE_WEIGHTS))):
+        frame = preseason_frame(bootstrap, fixtures, seed_season, gw=gw)
+        if not len(frame):
+            continue
+        w = FIXTURE_WEIGHTS[k]
+        for pid, p in zip(frame["id"].to_numpy(), _predict(frame)):
+            wsum[pid] = wsum.get(pid, 0.0) + w * p
+            wtot[pid] = wtot.get(pid, 0.0) + w
+        if gw == gw0:
+            base = frame                       # GW1 frame carries id/price/match
+    if base is None:
+        return pd.DataFrame(columns=["id", "name", "position", "team", "match",
+                                     "price", "pred"])
+    df = base.copy()
+    df["pred"] = [wsum[i] / wtot[i] for i in df["id"].to_numpy()]
+
     if apply_availability:
         av = availability(client)
         mult = df["id"].map(av).fillna(1.0)
