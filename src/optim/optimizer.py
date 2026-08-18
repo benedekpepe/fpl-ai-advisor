@@ -11,7 +11,7 @@ selection back. That makes it easy to test and reuse.
 import pandas as pd
 import pulp
 
-from src.config import SQUAD, XI_MIN, XI_MAX, MAX_PER_CLUB, DEFAULT_BUDGET
+from src.config import SQUAD, XI_MIN, XI_MAX, MAX_PER_CLUB, DEFAULT_BUDGET, BENCH_WEIGHT
 
 
 def conflict_dock(prob, y, p, conflict_penalty, min_pred=2.5):
@@ -80,9 +80,12 @@ def optimize_squad(players: pd.DataFrame, budget: int = DEFAULT_BUDGET,
     y = pulp.LpVariable.dicts("start", idx, cat="Binary")    # in starting XI
     c = pulp.LpVariable.dicts("capt", idx, cat="Binary")     # captain
 
-    # Objective: XI points, with the captain's points counted a second time.
+    # Objective: XI points, with the captain's points counted a second time, plus
+    # a small reward for the bench's projections so nailed cheap players (which
+    # can auto-sub in) beat non-playing reserves at the same price.
     objective = (pulp.lpSum(pred[i] * y[i] for i in idx)
-                 + pulp.lpSum(pred[i] * c[i] for i in idx))
+                 + pulp.lpSum(pred[i] * c[i] for i in idx)
+                 + BENCH_WEIGHT * pulp.lpSum(pred[i] * (x[i] - y[i]) for i in idx))
     objective = objective - conflict_dock(prob, y, p, conflict_penalty)
 
     prob += objective

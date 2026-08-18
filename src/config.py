@@ -32,6 +32,13 @@ SEED_SEASON = "2025-26"          # last completed season, used to seed pre-seaso
 # with opposed point sources (attacker vs defender/keeper). 0 disables it.
 CONFLICT_PENALTY = 0.35
 
+# Bench players score no XI points, so the optimiser would otherwise fill the
+# bench with the cheapest bodies regardless of whether they actually play. This
+# small weight on squad-but-not-starting players' projections makes it prefer
+# nailed, playing cheap options (which can auto-sub in) over non-playing
+# reserves — small enough not to distort the XI or pull budget off the starters.
+BENCH_WEIGHT = 0.1
+
 # ------------------------------------------------------------- data source
 # Where predict_all / the fixture ticker read per-gameweek history from:
 #   "db"   -> local Postgres (default for local development)
