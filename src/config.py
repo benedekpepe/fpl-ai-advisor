@@ -39,6 +39,12 @@ CONFLICT_PENALTY = 0.35
 # reserves — small enough not to distort the XI or pull budget off the starters.
 BENCH_WEIGHT = 0.1
 
+# Projections blend the next few gameweeks so upcoming fixture difficulty counts,
+# not just the immediate one. Weights decay (this gameweek heaviest); the length
+# also sets how many gameweeks are blended. Used by the cold-start builder and by
+# in-season transfer decisions (the XI you field is still scored on this GW only).
+FIXTURE_WEIGHTS = [1.0, 0.6, 0.36, 0.22]
+
 # ------------------------------------------------------------- data source
 # Where predict_all / the fixture ticker read per-gameweek history from:
 #   "db"   -> local Postgres (default for local development)

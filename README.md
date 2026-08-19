@@ -73,7 +73,9 @@ stack-aware squad optimiser, behind a Streamlit dashboard.
    player's form is seeded from their **previous-season** per-game averages,
    joined to this season's players by their permanent FPL `code` (ids change
    between seasons). Players with no previous-season data (new signings, promoted
-   clubs, youth) get a position + price based estimate.
+   clubs, youth) get a position + price based estimate. The builder blends the next few
+   gameweeks so upcoming fixtures matter, picks the 15 for that run, and then
+   sets the starting XI on the immediate gameweek.
 5. **Optimiser** — a mixed-integer program (PuLP) that picks the 15-man squad,
    the starting XI and the captain to maximise projected points (captain counted
    twice) under the real rules, with an optional **stack-aware** penalty that

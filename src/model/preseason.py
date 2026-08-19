@@ -177,30 +177,35 @@ def preseason_predictions(client: FPLClient = None,
     # averaged only over the gameweeks they actually play (blanks are skipped).
     gw0 = _next_gameweek(bootstrap["events"])
     wsum, wtot = {}, {}
-    base = None
+    base, gw1_pred = None, {}
     for k, gw in enumerate(range(gw0, gw0 + len(FIXTURE_WEIGHTS))):
         frame = preseason_frame(bootstrap, fixtures, seed_season, gw=gw)
         if not len(frame):
             continue
         w = FIXTURE_WEIGHTS[k]
-        for pid, p in zip(frame["id"].to_numpy(), _predict(frame)):
-            wsum[pid] = wsum.get(pid, 0.0) + w * p
+        p = _predict(frame)
+        for pid, pv in zip(frame["id"].to_numpy(), p):
+            wsum[pid] = wsum.get(pid, 0.0) + w * pv
             wtot[pid] = wtot.get(pid, 0.0) + w
         if gw == gw0:
             base = frame                       # GW1 frame carries id/price/match
+            gw1_pred = dict(zip(frame["id"].to_numpy(), p))   # this-gameweek only
     if base is None:
         return pd.DataFrame(columns=["id", "name", "position", "team", "match",
-                                     "price", "pred"])
+                                     "price", "pred", "pred_gw1"])
     df = base.copy()
-    df["pred"] = [wsum[i] / wtot[i] for i in df["id"].to_numpy()]
+    df["pred"] = [wsum[i] / wtot[i] for i in df["id"].to_numpy()]      # blended run
+    df["pred_gw1"] = df["id"].map(gw1_pred).fillna(df["pred"])          # this GW only
 
     if apply_availability:
         av = availability(client)
         mult = df["id"].map(av).fillna(1.0)
         df = df[mult > 0].copy()          # drop unavailable (injured/suspended/loaned)
-        df["pred"] = df["pred"] * df["id"].map(av).fillna(1.0)
+        m = df["id"].map(av).fillna(1.0)
+        df["pred"] = df["pred"] * m
+        df["pred_gw1"] = df["pred_gw1"] * m
     return df[["id", "name", "position", "team", "match", "value",
-               "pred"]].rename(columns={"value": "price"})
+               "pred", "pred_gw1"]].rename(columns={"value": "price"})
 
 
 def fixture_ticker(fixtures: list, teams: list, gw: int, n: int = 4) -> dict:
@@ -235,11 +240,27 @@ def flagged_players(bootstrap: dict) -> pd.DataFrame:
     return df.sort_values("price", ascending=False) if len(df) else df
 
 
+def build_squad(preds: pd.DataFrame, force_ids=None) -> pd.DataFrame:
+    """Two-stage cold-start pick: choose the 15 for the *run* (blended `pred`, so
+    a good next few gameweeks — fewer forced transfers later), then choose the
+    starting XI + captain for the *immediate* gameweek (`pred_gw1`). Falls back to
+    a single-stage pick if no this-gameweek column is present."""
+    squad = optimize_squad(preds, force_ids=force_ids or None,
+                           conflict_penalty=CONFLICT_PENALTY)
+    if "pred_gw1" not in preds.columns:
+        return squad
+    from src.advisor.personal import optimize_xi
+    gw1 = preds.set_index("id")["pred_gw1"].to_dict()
+    sq = squad.copy()
+    sq["pred"] = sq["id"].map(gw1).fillna(sq["pred"])   # score the 15 on this GW
+    _, sq = optimize_xi(sq, conflict_penalty=CONFLICT_PENALTY)
+    return sq
+
+
 def preseason_squad(client: FPLClient = None,
                     seed_season: str = SEED_SEASON) -> pd.DataFrame:
     """The optimal 15-man squad (with XI + captain) for the upcoming gameweek."""
-    return optimize_squad(preseason_predictions(client, seed_season),
-                          conflict_penalty=CONFLICT_PENALTY)
+    return build_squad(preseason_predictions(client, seed_season))
 
 
 def _print_squad(squad: pd.DataFrame, preds: pd.DataFrame) -> None:
@@ -307,8 +328,7 @@ def main() -> None:
         preds, [n.strip() for n in args.pin.split(",") if n.strip()],
         availability(client))
 
-    squad = optimize_squad(preds, force_ids=force_ids or None,
-                           conflict_penalty=CONFLICT_PENALTY)
+    squad = build_squad(preds, force_ids=force_ids or None)
     _print_squad(squad, preds)
 
     if force_ids:

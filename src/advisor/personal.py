@@ -27,7 +27,7 @@ from src.optim.optimizer import optimize_squad, conflict_dock
 from src.data.teams import teams_meta
 from src.config import (
     ACTIVE_SEASON as SEASON, FPL_API as FPL, MODEL_PATH, CONFLICT_PENALTY,
-    DATA_SOURCE,
+    DATA_SOURCE, BENCH_WEIGHT, FIXTURE_WEIGHTS,
     SQUAD, XI_MIN, XI_MAX, MAX_PER_CLUB, HIT, MAX_FT, BANK_THRESHOLD,
     POSITION_ORDER as ORDER, CHIP_LABEL, HALF_DEADLINE, HALF_LABEL,
 )
@@ -177,6 +177,24 @@ def best_squad_value(pool: pd.DataFrame, budget=1000) -> float:
     return sq[sq["starting"] == 1]["pred"].sum() + sq[sq["captain"] == 1]["pred"].sum()
 
 
+def _blend_pred(preds_all: pd.DataFrame, gw: int) -> dict:
+    """{element_id: weighted-average projection over the next FIXTURE_WEIGHTS
+    gameweeks from ``gw``}. Used so transfer decisions weigh a player's whole
+    upcoming run, not just the immediate gameweek. Players are averaged only over
+    the gameweeks they actually have a fixture for."""
+    frames = []
+    for k, g in enumerate(range(gw, gw + len(FIXTURE_WEIGHTS))):
+        f = preds_all[preds_all["gw"] == g][["id", "pred"]]
+        if len(f):
+            frames.append(f.assign(w=FIXTURE_WEIGHTS[k]))
+    if not frames:
+        return {}
+    allf = pd.concat(frames)
+    allf["wp"] = allf["pred"] * allf["w"]
+    agg = allf.groupby("id").agg(wp=("wp", "sum"), w=("w", "sum"))
+    return (agg["wp"] / agg["w"]).to_dict()
+
+
 def plan_transfers(current_ids, pool, bank, ft):
     p = pool.dropna(subset=["pred", "price"]).reset_index(drop=True)
     idx = list(p.index)
@@ -190,7 +208,8 @@ def plan_transfers(current_ids, pool, bank, ft):
     c = pulp.LpVariable.dicts("cap", idx, cat="Binary")
     hits = pulp.LpVariable("hits", lowBound=0)
     objective = (pulp.lpSum(pred[i] * y[i] for i in idx)
-                 + pulp.lpSum(pred[i] * c[i] for i in idx) - HIT * hits)
+                 + pulp.lpSum(pred[i] * c[i] for i in idx) - HIT * hits
+                 + BENCH_WEIGHT * pulp.lpSum(pred[i] * (x[i] - y[i]) for i in idx))
     objective = objective - conflict_dock(prob, y, p, CONFLICT_PENALTY)
     prob += objective
     for i in idx:
@@ -230,7 +249,8 @@ def plan_exact(current_ids, pool, bank, k):
     y = pulp.LpVariable.dicts("xi", idx, cat="Binary")
     c = pulp.LpVariable.dicts("cap", idx, cat="Binary")
     objective = (pulp.lpSum(pred[i] * y[i] for i in idx)
-                 + pulp.lpSum(pred[i] * c[i] for i in idx))
+                 + pulp.lpSum(pred[i] * c[i] for i in idx)
+                 + BENCH_WEIGHT * pulp.lpSum(pred[i] * (x[i] - y[i]) for i in idx))
     objective = objective - conflict_dock(prob, y, p, CONFLICT_PENALTY)
     prob += objective
     for i in idx:
@@ -423,14 +443,18 @@ def build_advice(team_id, gw=None, ft_override=None):
         _fx = _hist[_hist["gw"] == gw]
         pool["match"] = pool["id"].map(dict(zip(_fx["element"], _fx["fixture"])))
 
-    # Live availability: injured/suspended players score 0 (so they drop out of
-    # your XI and become transfer-out candidates); unavailable players you don't
-    # own are removed from the buy pool, while your own stay in so they can be
-    # replaced. Only applies to the live season, not the finished-season demo.
+    # Blended projection over the next few gameweeks — transfer decisions weigh a
+    # player's whole upcoming run, not just this gameweek. (The XI you field is
+    # still scored on this gameweek only, via base_xi below.)
+    pool["pred_blend"] = pool["id"].map(_blend_pred(preds_all, gw)).fillna(pool["pred"])
+
+    # Live availability: scale BOTH this-gameweek and blended projections; drop
+    # unavailable players you don't own (your own stay so they can be replaced).
     if DATA_SOURCE == "live":
         from src.ingestion.live import availability
         mult = pool["id"].map(availability()).fillna(1.0)
         pool["pred"] = pool["pred"] * mult
+        pool["pred_blend"] = pool["pred_blend"] * mult
         pool = pool[(mult > 0) | pool["id"].isin(ids)]
 
     squad = pool[pool["id"].isin(ids)].copy()
@@ -438,7 +462,8 @@ def build_advice(team_id, gw=None, ft_override=None):
         return {"ok": False, "team_id": team_id, "gw": gw, "season": SEASON,
                 "error": "Not enough player data to advise this gameweek."}
 
-    base_val, base_xi = optimize_xi(squad, conflict_penalty=CONFLICT_PENALTY)
+    # This gameweek's best XI + captain — what to actually field and captain now.
+    _, base_xi = optimize_xi(squad, conflict_penalty=CONFLICT_PENALTY)
     cap = base_xi[base_xi["captain"] == 1].iloc[0]
     nm = pool.set_index("id")["name"].to_dict()
     pos = pool.set_index("id")["position"].to_dict()
@@ -453,10 +478,18 @@ def build_advice(team_id, gw=None, ft_override=None):
         for pid, info in player_flags(set(ids)).items():
             squad_flags.append({"name": nm.get(pid, str(pid)), **info})
 
+    # Transfer decisions weigh the next few gameweeks: evaluate the hold baseline
+    # and every transfer option on the blended projection, so the comparison is
+    # consistent (does this move improve the run enough to beat the -4?).
+    pool_b = pool.copy()
+    pool_b["pred"] = pool_b["pred_blend"]
+    squad_b = pool_b[pool_b["id"].isin(ids)].copy()
+    base_val, _ = optimize_xi(squad_b, conflict_penalty=CONFLICT_PENALTY)
+
     # transfer options (0..ft+2 transfers), net of -4 hits
     options = {0: (base_val, base_xi, set(), set())}
     for k in range(1, ft + 3):
-        res = plan_exact(ids, pool, bank, k)
+        res = plan_exact(ids, pool_b, bank, k)
         if res:
             options[k] = res
 
@@ -474,7 +507,7 @@ def build_advice(team_id, gw=None, ft_override=None):
     rec_chip = recommend_chip(timing, gw)
     chip_replaces = rec_chip in ("wildcard", "freehit")
     chip_replaces = rec_chip in ("wildcard", "freehit")
-    rec_squad = optimize_squad(pool, budget=int(round(total_money))) if chip_replaces else None
+    rec_squad = optimize_squad(pool_b, budget=int(round(total_money))) if chip_replaces else None
 
     # transfer block
     new_sq = None
