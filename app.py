@@ -483,7 +483,6 @@ def _preseason_rows(squad, team_short, ticker):
 
 
 def preseason_view():
-    from src.optim.optimizer import optimize_squad
     st.markdown("<div style='color:#8a97a6;font-size:13px;margin:2px 0 10px'>"
                 "Build an optimal 15-man squad for the upcoming gameweek — before "
                 "any match is played — seeded from last season's form, with injured "
@@ -510,9 +509,8 @@ def preseason_view():
             continue
         force_ids.append(int(row["id"]))
 
-    from src.model.preseason import CONFLICT_PENALTY
-    squad = optimize_squad(preds, force_ids=force_ids or None,
-                           conflict_penalty=CONFLICT_PENALTY)
+    from src.model.preseason import build_squad
+    squad = build_squad(preds, force_ids=force_ids or None)
     rows = _preseason_rows(squad, team_short, ticker)
     st.markdown("<div class='fpl'>" + pitch_html(rows) + FX_LEGEND + summary_caption(rows)
                 + "</div>", unsafe_allow_html=True)
