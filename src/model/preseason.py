@@ -24,7 +24,7 @@ import pandas as pd
 import requests
 
 from src.config import (MERGED_GW_URL, PLAYERS_RAW_URL, SEED_SEASON, MODEL_PATH,
-                        CONFLICT_PENALTY)
+                        CONFLICT_PENALTY, FIXTURE_WEIGHTS)
 from src.ingestion.fpl_client import FPLClient
 from src.ingestion.live import availability
 from src.optim.optimizer import optimize_squad
@@ -42,7 +42,6 @@ SEED_COLS = BASES + ["starts_rate_5", "cum_ppg"]
 # difficulty matters, not just GW1. Weights decay so the immediate gameweek
 # dominates but the run still counts (an easy GW1 with a brutal follow-up is
 # rated below a steady run). The length also sets how many gameweeks are blended.
-FIXTURE_WEIGHTS = [1.0, 0.6, 0.36, 0.22]
 
 
 def _full_name(el: dict) -> str:
