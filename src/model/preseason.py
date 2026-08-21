@@ -58,19 +58,15 @@ def _csv(url: str) -> pd.DataFrame:
 @lru_cache(maxsize=2)
 def seed_from_previous_season(season: str = SEED_SEASON) -> pd.DataFrame:
     """Per-player, per-game form averages from a completed season, keyed by the
-    permanent player ``code`` (stable across seasons), plus ``web_name`` as a
-    secondary key for the rare case where a code doesn't carry over."""
-    pr = _csv(PLAYERS_RAW_URL.format(season=season))
-    id_to_code = dict(zip(pr["id"], pr["code"]))
-    code_to_web = dict(zip(pr["code"], pr["web_name"]))
+    permanent player ``code`` (stable across seasons)."""
+    id_to_code = dict(zip(*(lambda p: (p["id"], p["code"]))(
+        _csv(PLAYERS_RAW_URL.format(season=season)))))
     mg = _csv(MERGED_GW_URL.format(season=season))
     mg["code"] = mg["element"].map(id_to_code)
     agg = {b: (b, "mean") for b in BASES}
     agg["starts_rate_5"] = ("starts", "mean")
     agg["cum_ppg"] = ("total_points", "mean")
-    seed = mg.groupby("code").agg(**agg).reset_index()
-    seed["web_name"] = seed["code"].map(code_to_web)
-    return seed
+    return mg.groupby("code").agg(**agg).reset_index()
 
 
 def _apply_fallback(df: pd.DataFrame) -> pd.DataFrame:
@@ -129,22 +125,11 @@ def preseason_frame(bootstrap: dict, fixtures: list,
             continue
         rows.append({
             "id": e["id"], "code": e["code"], "name": _full_name(e),
-            "web_name": e.get("web_name"),
             "position": POSITION.get(e["element_type"]), "team": e["team"],
             "value": e["now_cost"], "opponent_team": o[0], "was_home": o[1],
         })
-    seed = seed_from_previous_season(seed_season)
-    df = pd.DataFrame(rows).merge(seed.drop(columns=["web_name"]),
+    df = pd.DataFrame(rows).merge(seed_from_previous_season(seed_season),
                                   on="code", how="left")
-    # Recover players whose permanent code didn't carry over (rare, but it drops
-    # a real player onto the price-only fallback) via a secondary web_name match.
-    miss = df["cum_ppg"].isna()
-    if miss.any():
-        by_name = (seed.dropna(subset=["web_name"])
-                       .drop_duplicates("web_name", keep="first")
-                       .set_index("web_name"))
-        for col in SEED_COLS:
-            df.loc[miss, col] = df.loc[miss, "web_name"].map(by_name[col]).to_numpy()
     df = _apply_fallback(df)
 
     for b in BASES:
@@ -254,21 +239,11 @@ def flagged_players(bootstrap: dict) -> pd.DataFrame:
     return df.sort_values("price", ascending=False) if len(df) else df
 
 
-def build_squad(preds: pd.DataFrame, force_ids=None,
-                bench_boost: bool = False) -> pd.DataFrame:
+def build_squad(preds: pd.DataFrame, force_ids=None) -> pd.DataFrame:
     """Two-stage cold-start pick: choose the 15 for the *run* (blended `pred`, so
     a good next few gameweeks — fewer forced transfers later), then choose the
     starting XI + captain for the *immediate* gameweek (`pred_gw1`). Falls back to
-    a single-stage pick if no this-gameweek column is present.
-
-    With ``bench_boost``, all 15 are optimised for the immediate gameweek and the
-    bench counts in full (you plan to play the Bench Boost chip in GW1, so every
-    player scores) — no cheap bench fillers."""
-    if bench_boost and "pred_gw1" in preds.columns:
-        p = preds.copy()
-        p["pred"] = p["pred_gw1"]
-        return optimize_squad(p, force_ids=force_ids or None,
-                              conflict_penalty=CONFLICT_PENALTY, bench_boost=True)
+    a single-stage pick if no this-gameweek column is present."""
     squad = optimize_squad(preds, force_ids=force_ids or None,
                            conflict_penalty=CONFLICT_PENALTY)
     if "pred_gw1" not in preds.columns:

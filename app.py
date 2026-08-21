@@ -498,10 +498,6 @@ def preseason_view():
     names = preds.sort_values("pred", ascending=False)["name"].tolist()
     pins = st.multiselect("Pin must-have players (optional)", names,
                           help="Forced into the squad. Injured players can't be pinned.")
-    bench_boost = st.checkbox(
-        "Plan to Bench Boost in GW1",
-        help="Build all 15 as strong picks for GW1 (every player scores under "
-             "Bench Boost), instead of a cheap bench.")
     if not st.button("Build squad"):
         return
 
@@ -514,7 +510,7 @@ def preseason_view():
         force_ids.append(int(row["id"]))
 
     from src.model.preseason import build_squad
-    squad = build_squad(preds, force_ids=force_ids or None, bench_boost=bench_boost)
+    squad = build_squad(preds, force_ids=force_ids or None)
     rows = _preseason_rows(squad, team_short, ticker)
     st.markdown("<div class='fpl'>" + pitch_html(rows) + FX_LEGEND + summary_caption(rows)
                 + "</div>", unsafe_allow_html=True)
