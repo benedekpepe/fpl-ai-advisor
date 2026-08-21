@@ -54,7 +54,8 @@ def conflict_dock(prob, y, p, conflict_penalty, min_pred=2.5):
 
 
 def optimize_squad(players: pd.DataFrame, budget: int = DEFAULT_BUDGET,
-                   force_ids=None, conflict_penalty: float = 0.0) -> pd.DataFrame:
+                   force_ids=None, conflict_penalty: float = 0.0,
+                   bench_boost: bool = False) -> pd.DataFrame:
     """Return the chosen squad with in_squad / starting / captain flags.
 
     `players` must have columns: pred, price, position (GK/DEF/MID/FWD), team.
@@ -81,11 +82,12 @@ def optimize_squad(players: pd.DataFrame, budget: int = DEFAULT_BUDGET,
     c = pulp.LpVariable.dicts("capt", idx, cat="Binary")     # captain
 
     # Objective: XI points, with the captain's points counted a second time, plus
-    # a small reward for the bench's projections so nailed cheap players (which
-    # can auto-sub in) beat non-playing reserves at the same price.
+    # a reward for the bench's projections. Normally small (nailed cheap cover);
+    # under Bench Boost every one of the 15 scores, so the bench counts in full.
+    bench_w = 1.0 if bench_boost else BENCH_WEIGHT
     objective = (pulp.lpSum(pred[i] * y[i] for i in idx)
                  + pulp.lpSum(pred[i] * c[i] for i in idx)
-                 + BENCH_WEIGHT * pulp.lpSum(pred[i] * (x[i] - y[i]) for i in idx))
+                 + bench_w * pulp.lpSum(pred[i] * (x[i] - y[i]) for i in idx))
     objective = objective - conflict_dock(prob, y, p, conflict_penalty)
 
     prob += objective
