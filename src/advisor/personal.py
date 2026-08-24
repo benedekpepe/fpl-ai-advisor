@@ -47,6 +47,9 @@ def predict_all(season: str) -> pd.DataFrame:
     clf, reg, cols = bundle["clf"], bundle["reg"], bundle["cols"]
     feats = build_feature_frame(attach_opponent_strength(load_history()))
     feats = feats[feats["season"] == season].copy()
+    if feats.empty:                       # early season: no current-season rows yet
+        return pd.DataFrame(columns=["gw", "id", "name", "position", "team",
+                                     "price", "pred", "actual"])
     feats["pred"] = clf.predict_proba(feats[cols])[:, 1] * reg.predict(feats[cols])
     return feats.groupby(["gw", "element"]).agg(
         name=("name", "first"), position=("position", "first"),
@@ -438,21 +441,33 @@ def build_advice(team_id, gw=None, ft_override=None, picks_gw=None):
     pool = preds_all[preds_all["gw"] == gw].copy()
     fxmap = team_fixtures(SEASON, gw, 4)
 
-    # Attach each player's fixture id for this gameweek so the XI *and* transfer
-    # optimisers are stack-aware (won't stack opposing players from one match).
-    _hist = load_history()
-    if "gw" not in _hist.columns and "GW" in _hist.columns:
-        _hist = _hist.rename(columns={"GW": "gw"})
-    if "season" in _hist.columns:
-        _hist = _hist[_hist["season"] == SEASON]
-    if "fixture" in _hist.columns:
-        _fx = _hist[_hist["gw"] == gw]
-        pool["match"] = pool["id"].map(dict(zip(_fx["element"], _fx["fixture"])))
-
-    # Blended projection over the next few gameweeks — transfer decisions weigh a
-    # player's whole upcoming run, not just this gameweek. (The XI you field is
-    # still scored on this gameweek only, via base_xi below.)
-    pool["pred_blend"] = pool["id"].map(_blend_pred(preds_all, gw)).fillna(pool["pred"])
+    if pool.empty:
+        # Early season: not enough current-season form for the model yet, so fall
+        # back to the cold-start seed (last season + this season's fixtures). The
+        # seed already carries this-gameweek (pred_gw1) and blended (pred) values.
+        from src.model.preseason import preseason_predictions
+        seed = preseason_predictions(apply_availability=False)
+        if not len(seed):
+            return {"ok": False, "team_id": team_id, "gw": gw, "season": SEASON,
+                    "error": "Not enough data yet to advise — try again once the "
+                             "gameweek's results are in."}
+        pool = seed.rename(columns={"pred": "pred_blend", "pred_gw1": "pred"}).copy()
+        pool["gw"] = gw                    # match already present from the seed
+    else:
+        # Attach each player's fixture id for this gameweek so the XI *and* transfer
+        # optimisers are stack-aware (won't stack opposing players from one match).
+        _hist = load_history()
+        if "gw" not in _hist.columns and "GW" in _hist.columns:
+            _hist = _hist.rename(columns={"GW": "gw"})
+        if "season" in _hist.columns:
+            _hist = _hist[_hist["season"] == SEASON]
+        if "fixture" in _hist.columns:
+            _fx = _hist[_hist["gw"] == gw]
+            pool["match"] = pool["id"].map(dict(zip(_fx["element"], _fx["fixture"])))
+        # Blended projection over the next few gameweeks — transfer decisions weigh
+        # a player's whole upcoming run, not just this gameweek. (The XI you field
+        # is still scored on this gameweek only, via base_xi below.)
+        pool["pred_blend"] = pool["id"].map(_blend_pred(preds_all, gw)).fillna(pool["pred"])
 
     # Live availability: scale BOTH this-gameweek and blended projections; drop
     # unavailable players you don't own (your own stay so they can be replaced).

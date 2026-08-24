@@ -510,10 +510,13 @@ def preseason_view():
     names = preds.sort_values("pred", ascending=False)["name"].tolist()
     pins = st.multiselect("Pin must-have players (optional)", names,
                           help="Forced into the squad. Injured players can't be pinned.")
-    bench_boost = st.checkbox(
-        "Plan to Bench Boost in GW1",
-        help="Build all 15 as strong GW1 picks (every player scores under Bench "
-             "Boost), instead of a cheap bench.")
+    from src.ingestion.live import season_started
+    bench_boost = False
+    if not season_started():          # GW1 Bench Boost only makes sense pre-season
+        bench_boost = st.checkbox(
+            "Plan to Bench Boost in GW1",
+            help="Build all 15 as strong GW1 picks (every player scores under Bench "
+                 "Boost), instead of a cheap bench.")
     if not st.button("Build squad"):
         return
 

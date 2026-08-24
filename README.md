@@ -34,7 +34,9 @@ stack-aware squad optimiser, behind a Streamlit dashboard.
 - **Weekly advice** — once the season is underway (the first deadline has
   passed): captain, transfer(s) with the hit math, best XI, and chip timing for
   the **upcoming** gameweek (the one you can still change), computed from your
-  current squad.
+  current squad. In the opening gameweeks — before there's enough current-season
+  form — it falls back to the same last-season **seed** the builder uses, then
+  shifts to live form as results come in.
 
 ## What it does
 
