@@ -240,10 +240,13 @@ def _fix(r):
 
 def _pl(r):
     col = club_color(r.get("team"))
+    run = r.get("pred_run")
+    run_html = (f"<span class='pl-pred' style='opacity:.55;font-size:10px'>"
+                f"{run:.1f}</span>" if run is not None else "")
     return (f"<div class='pl'><div class='shirt tip' data-tip=\"{_tip(r)}\" style='border-top:3px solid {col}'>"
             f"<div class='pl-name'>{short_name(r['name'])}{_badge(r)}</div>"
             f"<div class='pl-meta'><span class='tm'>{team_code(r.get('team'))}</span>"
-            f"<span class='pl-pred'>{r['pred']:.1f}</span></div>{_fix(r)}</div></div>")
+            f"<span class='pl-pred'>{r['pred']:.1f}</span>{run_html}</div>{_fix(r)}</div></div>")
 
 
 def pitch_html(rows, bb=False):
@@ -273,10 +276,17 @@ FX_LEGEND = ("<div class='fxleg'><span>Next 4 fixtures</span>"
 
 def summary_caption(rows):
     form, total = xi_summary(rows)
-    cap = next((r["name"] for r in rows if r.get("captain")), "")
+    starters = [r for r in rows if r["role"] == "start"]
+    run_total = sum((r.get("pred_run") if r.get("pred_run") is not None else r["pred"])
+                    for r in starters)
+    cap = next((r for r in rows if r.get("captain")), None)
+    if cap is not None:
+        run_total += (cap.get("pred_run") if cap.get("pred_run") is not None else cap["pred"])
+    has_run = any(r.get("pred_run") is not None for r in starters)
+    run_html = (f" · Next-4 avg <b>{run_total:.1f} pts</b>" if has_run else "")
     return (f"<div class='note' style='margin-top:8px'>Formation <b>{form}</b> · "
-            f"Projected <b style='color:#c6ff3a'>{total:.1f} pts</b> (incl. captain) · "
-            f"Captain <b>{cap}</b></div>")
+            f"This GW <b style='color:#c6ff3a'>{total:.1f} pts</b>{run_html} "
+            f"(incl. captain) · Captain <b>{cap['name'] if cap else ''}</b></div>")
 
 
 def money_line(bank_after, ft_left, preserved=False):
@@ -477,6 +487,8 @@ def _preseason_rows(squad, team_short, ticker):
             role = "bench"
         rows.append({"role": role, "position": r["position"], "name": r["name"],
                      "pred": float(r["pred"]), "captain": bool(r["captain"]),
+                     "pred_run": (float(r["pred_run"]) if "pred_run" in squad.columns
+                                  and pd.notna(r["pred_run"]) else None),
                      "team": team_short.get(r["team"], r["team"]),
                      "price": int(r["price"]), "fix": ticker.get(r["team"], [])})
     return rows
@@ -514,7 +526,13 @@ def preseason_view():
         force_ids.append(int(row["id"]))
 
     from src.model.preseason import build_squad
-    squad = build_squad(preds, force_ids=force_ids or None, bench_boost=bench_boost)
+    try:
+        squad = build_squad(preds, force_ids=force_ids or None, bench_boost=bench_boost)
+    except Exception:  # noqa: BLE001 — infeasible pin combination, etc.
+        st.warning("Those pins can't form a valid squad — they may cost too much, "
+                   "exceed 3 from one club, or leave no room for a legal XI. "
+                   "Try fewer pins.")
+        return
     rows = _preseason_rows(squad, team_short, ticker)
     st.markdown("<div class='fpl'>" + pitch_html(rows) + FX_LEGEND + summary_caption(rows)
                 + "</div>", unsafe_allow_html=True)

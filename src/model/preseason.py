@@ -270,21 +270,32 @@ def build_squad(preds: pd.DataFrame, force_ids=None,
     With ``bench_boost``, all 15 are optimised for the immediate gameweek and the
     bench counts in full (you plan to play the Bench Boost chip in GW1, so every
     player scores) — no cheap bench fillers."""
+    run_map = preds.set_index("id")["pred"].to_dict()          # blended next-X-GW avg
+    gw1_map = (preds.set_index("id")["pred_gw1"].to_dict()
+               if "pred_gw1" in preds.columns else run_map)     # this gameweek only
+
+    def _annotate(sq):
+        sq = sq.copy()
+        sq["pred_run"] = sq["id"].map(run_map)                  # squad-selection metric
+        sq["pred_gw1"] = sq["id"].map(gw1_map)                  # this-gameweek metric
+        return sq
+
     if bench_boost and "pred_gw1" in preds.columns:
         p = preds.copy()
         p["pred"] = p["pred_gw1"]
-        return optimize_squad(p, force_ids=force_ids or None,
-                              conflict_penalty=CONFLICT_PENALTY, bench_boost=True)
+        sq = optimize_squad(p, force_ids=force_ids or None,
+                            conflict_penalty=CONFLICT_PENALTY, bench_boost=True)
+        sq["pred"] = sq["id"].map(gw1_map).fillna(sq["pred"])
+        return _annotate(sq)
     squad = optimize_squad(preds, force_ids=force_ids or None,
                            conflict_penalty=CONFLICT_PENALTY)
     if "pred_gw1" not in preds.columns:
-        return squad
+        return _annotate(squad)
     from src.advisor.personal import optimize_xi
-    gw1 = preds.set_index("id")["pred_gw1"].to_dict()
     sq = squad.copy()
-    sq["pred"] = sq["id"].map(gw1).fillna(sq["pred"])   # score the 15 on this GW
+    sq["pred"] = sq["id"].map(gw1_map).fillna(sq["pred"])   # XI chosen on this GW
     _, sq = optimize_xi(sq, conflict_penalty=CONFLICT_PENALTY)
-    return sq
+    return _annotate(sq)
 
 
 def preseason_squad(client: FPLClient = None,
