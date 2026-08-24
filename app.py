@@ -553,10 +553,10 @@ def preseason_view():
 
 
 def live_advice_view():
-    """In-season advice on the live season, with the gameweek auto-detected."""
-    from src.ingestion.live import current_gameweek
+    """In-season advice on the live season, for the upcoming (changeable) gameweek."""
+    from src.ingestion.live import season_started
     st.markdown("<div style='color:#8a97a6;font-size:13px;margin-bottom:6px'>"
-                "Enter your FPL Team ID — advice is generated for the current "
+                "Enter your FPL Team ID — advice is generated for the upcoming "
                 "gameweek, detected automatically from the live FPL data.</div>",
                 unsafe_allow_html=True)
     team_id = st.text_input("FPL Team ID", value="", placeholder="e.g. 1234567",
@@ -568,12 +568,11 @@ def live_advice_view():
         return
     with st.spinner("Detecting the gameweek and crunching the live numbers…"):
         try:
-            gw = current_gameweek()
-            if not gw or gw <= 1:
-                st.info("No completed gameweeks yet this season — switch to "
-                        "**Pre-season squad builder** above to build your GW1 team.")
+            if not season_started():
+                st.info("The season hasn't kicked off yet — switch to "
+                        "**Build from scratch** above to build your GW1 team.")
                 return
-            advice = build_advice(int(team_id))      # gameweek auto-detected
+            advice = build_advice(int(team_id))      # upcoming GW, auto-detected
             if not advice["ok"]:
                 st.warning(advice["error"])
             else:
@@ -593,8 +592,8 @@ def _live_gameweek():
 
 def _live_home():
     """Live-season home: show the right tool for where the season is."""
-    gw = _live_gameweek()
-    if not gw or gw <= 1:
+    from src.ingestion.live import season_started
+    if not season_started():
         st.caption("The season hasn't kicked off yet — build your opening squad below.")
         preseason_view()
         return

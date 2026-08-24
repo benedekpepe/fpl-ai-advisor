@@ -407,19 +407,25 @@ def team_fixtures(season, from_gw, n=4):
     return out
 
 
-def build_advice(team_id, gw=None, ft_override=None):
+def build_advice(team_id, gw=None, ft_override=None, picks_gw=None):
     """Compute the full weekly recommendation and return it as structured data.
 
-    `gw` may be omitted in live mode — the current gameweek is then detected from
-    the live FPL API.
+    `gw` may be omitted in live mode — advice then targets the upcoming gameweek
+    (the one you can still change), while the current team is read from the
+    gameweek in progress. Pass `gw` (as the demo does) to advise on a specific,
+    already-played gameweek, reading picks from that same gameweek.
     """
     if gw is None:
-        from src.ingestion.live import current_gameweek
-        gw = current_gameweek()
+        from src.ingestion.live import upcoming_gameweek, current_gameweek
+        gw = upcoming_gameweek()                       # target: next changeable GW
+        if picks_gw is None:
+            picks_gw = current_gameweek()              # current team: GW in progress
         if gw is None:
             return {"ok": False, "team_id": team_id, "gw": None, "season": SEASON,
                     "error": "Could not detect the current gameweek."}
-    picks = get_picks(team_id, gw)
+    if picks_gw is None:
+        picks_gw = gw                                  # demo: picks come from the same GW
+    picks = get_picks(team_id, picks_gw)
     ids = [p["element"] for p in picks["picks"]]
     bank = picks.get("entry_history", {}).get("bank", 0)
     history = get_history(team_id)

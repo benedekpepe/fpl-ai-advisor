@@ -64,6 +64,34 @@ def current_gameweek(client: FPLClient | None = None) -> int | None:
     return None
 
 
+def season_started(client: FPLClient | None = None) -> bool:
+    """True once at least one gameweek's deadline has passed (FPL marks it
+    ``is_current``). Before that it's pre-season — build the opening squad.
+    Defensive: any error is treated as not-started (safe: shows the builder)."""
+    try:
+        events = (client or FPLClient()).get_bootstrap_static()["events"]
+        return any(e.get("is_current") for e in events)
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def upcoming_gameweek(client: FPLClient | None = None) -> int | None:
+    """The next gameweek you can still change — the one whose deadline is in the
+    future (FPL ``is_next``). Falls back to ``is_current``, then None. This is the
+    gameweek in-season advice should target (you can't change a live one)."""
+    try:
+        events = (client or FPLClient()).get_bootstrap_static()["events"]
+    except Exception:  # noqa: BLE001
+        return None
+    for e in events:
+        if e.get("is_next"):
+            return e["id"]
+    for e in events:
+        if e.get("is_current"):
+            return e["id"]
+    return None
+
+
 def availability(client: FPLClient | None = None) -> dict[int, float]:
     """Map element_id -> a play-probability multiplier in [0, 1].
 

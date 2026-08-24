@@ -26,11 +26,15 @@ stack-aware squad optimiser, behind a Streamlit dashboard.
 
 - **Squad builder** — the optimal 15-man squad built from scratch: for the start
   of the season (before any gameweek), or any time you want a from-scratch team
-  for a Wildcard or Free Hit. Optionally **pin** must-have players, and see each
-  pick's upcoming fixtures. When there's no current-season form yet, projections
-  are **seeded from last season**.
-- **Weekly advice** — once the season is underway: captain, transfer(s) with the
-  hit math, best XI, and chip timing, computed from your actual squad.
+  for a Wildcard or Free Hit. Optionally **pin** must-have players, tick **Bench
+  Boost** to build all 15 as strong GW1 picks, and see each pick's upcoming
+  fixtures. Every player shows both its **this-gameweek** projection and its
+  **next-4-average**. When there's no current-season form yet, projections are
+  **seeded from last season**.
+- **Weekly advice** — once the season is underway (the first deadline has
+  passed): captain, transfer(s) with the hit math, best XI, and chip timing for
+  the **upcoming** gameweek (the one you can still change), computed from your
+  current squad.
 
 ## What it does
 
@@ -73,7 +77,8 @@ stack-aware squad optimiser, behind a Streamlit dashboard.
    player's form is seeded from their **previous-season** per-game averages,
    joined to this season's players by their permanent FPL `code` (ids change
    between seasons). Players with no previous-season data (new signings, promoted
-   clubs, youth) get a position + price based estimate. The builder blends the next few
+   clubs, youth) get a position + price based estimate; players whose permanent code
+   didn't carry between seasons are recovered by name. The builder blends the next few
    gameweeks so upcoming fixtures matter, picks the 15 for that run, and then
    sets the starting XI on the immediate gameweek.
 5. **Optimiser** — a mixed-integer program (PuLP) that picks the 15-man squad,
