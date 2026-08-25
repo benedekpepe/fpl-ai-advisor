@@ -50,7 +50,18 @@ def predict_all(season: str) -> pd.DataFrame:
     if feats.empty:                       # early season: no current-season rows yet
         return pd.DataFrame(columns=["gw", "id", "name", "position", "team",
                                      "price", "pred", "actual"])
-    feats["pred"] = clf.predict_proba(feats[cols])[:, 1] * reg.predict(feats[cols])
+    # Early-season value dampening. The model learned on full seasons, where price
+    # strongly predicts points; with only a game or two of form it leans on price
+    # so hard that a pricey flop outranks an in-form cheap player. So shrink value
+    # toward the per-position median until ~4 games are in, then use the real price
+    # (what the model was validated on — full-season data is unaffected).
+    X = feats[cols].copy()
+    if "value" in X.columns and "games_played" in feats.columns:
+        shrink = (feats["games_played"].clip(lower=0) / 4.0).clip(upper=1.0)
+        med = feats.groupby("position")["value"].transform("median").fillna(
+            feats["value"].median())
+        X["value"] = (med + (feats["value"] - med) * shrink).to_numpy()
+    feats["pred"] = clf.predict_proba(X)[:, 1] * reg.predict(X)
     return feats.groupby(["gw", "element"]).agg(
         name=("name", "first"), position=("position", "first"),
         team=("team", "first"), price=("value", "first"),
