@@ -29,6 +29,10 @@ from src.config import ACTIVE_SEASON
 # FPL element_type -> our position label.
 POSITION = {1: "GK", 2: "DEF", 3: "MID", 4: "FWD"}
 
+# How many upcoming (unplayed) gameweeks to project per player — enough for the
+# next-gameweek advice, the fixture blend, and near-term chip timing.
+UPCOMING_HORIZON = 8
+
 # Per-gameweek history fields the model's feature build relies on; mapped 1:1
 # from the API's element-summary "history" entries onto our column names.
 _HISTORY_FIELDS = [
@@ -176,5 +180,24 @@ def current_season_frame(client: FPLClient | None = None) -> pd.DataFrame:
             row["xp"] = None  # FPL's own xP isn't in per-gameweek history
             for f in _HISTORY_FIELDS:
                 row[f] = _num(h.get(f))
+            rows.append(row)
+        # Upcoming (unplayed) fixtures — so the model can project the NEXT few
+        # gameweeks from this season's form (rolling features come from the games
+        # already played), instead of having no row to score. Stats are 0 (not yet
+        # played); price is the current price so the value feature is right.
+        for fx in summary.get("fixtures", [])[:UPCOMING_HORIZON]:
+            if fx.get("event") is None:
+                continue
+            home = bool(fx.get("is_home"))
+            row = dict(meta)
+            row["gw"] = fx.get("event")
+            row["fixture"] = fx.get("id")
+            row["opponent_team"] = fx.get("team_a") if home else fx.get("team_h")
+            row["was_home"] = home
+            row["kickoff_time"] = fx.get("kickoff_time")
+            row["xp"] = None
+            for f in _HISTORY_FIELDS:
+                row[f] = 0
+            row["value"] = el.get("now_cost", 0)   # current price for the value feature
             rows.append(row)
     return pd.DataFrame(rows)

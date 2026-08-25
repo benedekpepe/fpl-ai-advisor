@@ -27,8 +27,8 @@ def test_ft_is_one_in_gw1():
 
 
 def test_ft_accumulates_below_cap():
-    # no transfers made: 1 at the start, +1 per prior week -> 3 entering GW3.
-    assert estimate_free_transfers(_history(), 3) == 3
+    # no transfers made: GW2 has 1, then +1 per idle week -> 2 entering GW3.
+    assert estimate_free_transfers(_history(), 3) == 2
 
 
 def test_ft_never_exceeds_cap():
