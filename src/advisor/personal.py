@@ -62,6 +62,13 @@ def predict_all(season: str) -> pd.DataFrame:
             feats["value"].median())
         X["value"] = (med + (feats["value"] - med) * shrink).to_numpy()
     feats["pred"] = clf.predict_proba(X)[:, 1] * reg.predict(X)
+    # Early-season recency blend (fades out by ~GW6). The model regresses a single
+    # game hard toward the mean, so a big GW1 barely moves its projection. Blend in
+    # the player's actual points-per-game so recent output — not just price — ranks
+    # players while the sample is tiny.
+    if "cum_ppg" in feats.columns and "games_played" in feats.columns:
+        fw = (0.4 * (1 - (feats["games_played"] - 1) / 5.0)).clip(lower=0, upper=1)
+        feats["pred"] = (1 - fw) * feats["pred"] + fw * feats["cum_ppg"].fillna(0)
     return feats.groupby(["gw", "element"]).agg(
         name=("name", "first"), position=("position", "first"),
         team=("team", "first"), price=("value", "first"),
