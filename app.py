@@ -581,7 +581,13 @@ def live_advice_view():
             else:
                 st.markdown(render_html(advice), unsafe_allow_html=True)
         except Exception as exc:  # noqa: BLE001
-            st.error(f"Something went wrong: {exc}")
+            import traceback
+            tb = traceback.extract_tb(exc.__traceback__)
+            ours = [f for f in tb if "/src/" in f.filename or f.filename.endswith("app.py")]
+            frame = ours[-1] if ours else (tb[-1] if tb else None)
+            where = (f"  [{frame.filename.split('/')[-1]}:{frame.lineno} "
+                     f"in {frame.name}]" if frame else "")
+            st.error(f"Something went wrong: {exc}{where}")
 
 
 @st.cache_data(ttl=1800, show_spinner=False)

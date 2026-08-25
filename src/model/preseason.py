@@ -189,6 +189,8 @@ def preseason_predictions(client: FPLClient = None,
     clf, reg, cols = bundle["clf"], bundle["reg"], bundle["cols"]
 
     def _predict(frame):
+        if not len(frame):
+            return np.array([])
         return clf.predict_proba(frame[cols])[:, 1] * reg.predict(frame[cols])
 
     # Blend the next few gameweeks so upcoming fixture difficulty counts, not just

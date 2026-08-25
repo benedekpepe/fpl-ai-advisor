@@ -437,8 +437,12 @@ def build_advice(team_id, gw=None, ft_override=None, picks_gw=None):
     available, deadline_gw, half = chips_available(history, gw)
     used_chips = chips_used(history, gw)
 
-    preds_all = predict_all(SEASON)
-    pool = preds_all[preds_all["gw"] == gw].copy()
+    try:
+        preds_all = predict_all(SEASON)
+        pool = preds_all[preds_all["gw"] == gw].copy()
+    except Exception:  # noqa: BLE001 — thin/odd early-season data → use the seed
+        preds_all = pd.DataFrame(columns=["gw", "id", "pred"])
+        pool = pd.DataFrame()
     fxmap = team_fixtures(SEASON, gw, 4)
 
     if pool.empty:
