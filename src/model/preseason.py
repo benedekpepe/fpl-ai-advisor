@@ -56,6 +56,38 @@ def _csv(url: str) -> pd.DataFrame:
 
 
 @lru_cache(maxsize=2)
+@lru_cache(maxsize=2)
+def current_season_seed(season: str = None) -> pd.DataFrame:
+    """Per-player per-game form averages from THIS season's played games so far,
+    keyed by code — the in-season analogue of ``seed_from_previous_season``. Feed
+    it to ``preseason_predictions(seed_override=...)`` to forward-predict the
+    upcoming gameweek from current form instead of last season's. Empty until at
+    least one gameweek has been played (then the caller uses last season)."""
+    from src.ingestion.live import current_season_frame, client_or_default
+    empty = pd.DataFrame(columns=["code"] + SEED_COLS + ["web_name"])
+    try:
+        client = client_or_default(None)
+        boot = client.get_bootstrap_static()
+        id_to_code = {e["id"]: e["code"] for e in boot["elements"]}
+        code_to_web = {e["code"]: e.get("web_name") for e in boot["elements"]}
+        hist = current_season_frame(client)
+        if not len(hist):
+            return empty
+        hist = hist.copy()
+        hist["code"] = hist["element"].map(id_to_code)
+        for b in BASES + ["starts"]:
+            if b not in hist.columns:
+                hist[b] = 0.0
+        agg = {b: (b, "mean") for b in BASES}
+        agg["starts_rate_5"] = ("starts", "mean")
+        agg["cum_ppg"] = ("total_points", "mean")
+        seed = hist.dropna(subset=["code"]).groupby("code").agg(**agg).reset_index()
+        seed["web_name"] = seed["code"].map(code_to_web)
+        return seed
+    except Exception:  # noqa: BLE001 — any issue → caller falls back to last season
+        return empty
+
+
 def seed_from_previous_season(season: str = SEED_SEASON) -> pd.DataFrame:
     """Per-player, per-game form averages from a completed season, keyed by the
     permanent player ``code`` (stable across seasons), plus ``web_name`` as a
@@ -114,9 +146,11 @@ def _fixture_opponents(fixtures: list, gw: int) -> dict:
 
 
 def preseason_frame(bootstrap: dict, fixtures: list,
-                    seed_season: str = SEED_SEASON, gw: int = None) -> pd.DataFrame:
+                    seed_season: str = SEED_SEASON, gw: int = None,
+                    seed_df: pd.DataFrame = None) -> pd.DataFrame:
     """Build the model's 25-feature frame for a gameweek's players (default: the
-    next unplayed one)."""
+    next unplayed one). ``seed_df`` overrides the last-season seed (used in-season
+    to forward-predict from *this* season's form instead)."""
     if gw is None:
         gw = _next_gameweek(bootstrap["events"])
     opp = _fixture_opponents(fixtures, gw)
@@ -133,7 +167,7 @@ def preseason_frame(bootstrap: dict, fixtures: list,
             "position": POSITION.get(e["element_type"]), "team": e["team"],
             "value": e["now_cost"], "opponent_team": o[0], "was_home": o[1],
         })
-    seed = seed_from_previous_season(seed_season)
+    seed = seed_df if seed_df is not None else seed_from_previous_season(seed_season)
     df = pd.DataFrame(rows).merge(seed.drop(columns=["web_name"]),
                                   on="code", how="left")
     # Recover players whose permanent code didn't carry over (rare, but it drops a
@@ -175,11 +209,14 @@ def preseason_frame(bootstrap: dict, fixtures: list,
 
 def preseason_predictions(client: FPLClient = None,
                           seed_season: str = SEED_SEASON,
-                          apply_availability: bool = True) -> pd.DataFrame:
+                          apply_availability: bool = True,
+                          seed_override: pd.DataFrame = None) -> pd.DataFrame:
     """Projected points for every player for the upcoming (unplayed) gameweek.
 
     With ``apply_availability`` (default), each projection is scaled by the live
     availability multiplier, so injured/suspended players drop out of selection.
+    ``seed_override`` swaps last season's seed for another (e.g. this season's
+    form) so the same machinery forward-predicts in-season, not just pre-season.
     """
     client = client or FPLClient()
     bootstrap = client.get_bootstrap_static()
@@ -201,7 +238,8 @@ def preseason_predictions(client: FPLClient = None,
     wsum, wtot = {}, {}
     base, gw1_pred = None, {}
     for k, gw in enumerate(range(gw0, gw0 + len(FIXTURE_WEIGHTS))):
-        frame = preseason_frame(bootstrap, fixtures, seed_season, gw=gw)
+        frame = preseason_frame(bootstrap, fixtures, seed_season, gw=gw,
+                                seed_df=seed_override)
         if not len(frame):
             continue
         w = FIXTURE_WEIGHTS[k]

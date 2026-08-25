@@ -76,11 +76,17 @@ def get_history(team_id):
 
 # --------------------------- context from history -------------------------
 def estimate_free_transfers(history: dict, target_gw: int) -> int:
-    """Reconstruct available free transfers entering target_gw (an estimate)."""
+    """Reconstruct available free transfers entering target_gw (an estimate).
+
+    GW1 is unlimited (a fresh squad), so nothing rolls over from it — entering
+    GW2 you have exactly 1. Rollovers only start accruing from GW2 onward.
+    """
     made = {c["event"]: c.get("event_transfers", 0) for c in history.get("current", [])}
     chip = {c["event"]: c["name"] for c in history.get("chips", [])}
-    ft = 1
-    for g in range(1, target_gw):
+    if target_gw <= 2:
+        return 1                                  # GW1 unlimited → GW2 has 1 FT
+    ft = 1                                         # entering GW2
+    for g in range(2, target_gw):                 # accrue rollovers from GW2 on
         c = chip.get(g)
         if c == "wildcard":
             ft = 1
@@ -354,6 +360,8 @@ def _xi_rows(df, fxmap=None):
                "pred": round(float(r["pred"]), 2),
                "actual": (None if pd.isna(r.get("actual")) else int(round(r["actual"]))),
                "captain": bool(r["captain"]), "vice": False, "role": role}
+        if "pred_blend" in df.columns and pd.notna(r.get("pred_blend")):
+            row["pred_run"] = round(float(r["pred_blend"]), 2)   # next-few-GW average
         if fxmap is not None:
             row["fix"] = fxmap.get(r.get("team"), [])
         rows.append(row)
@@ -444,13 +452,26 @@ def build_advice(team_id, gw=None, ft_override=None, picks_gw=None):
         preds_all = pd.DataFrame(columns=["gw", "id", "pred"])
         pool = pd.DataFrame()
     fxmap = team_fixtures(SEASON, gw, 4)
+    if DATA_SOURCE == "live" and not fxmap:
+        # The played history has no future rows, so pull upcoming fixtures from the
+        # live endpoint (same ticker the builder uses), keyed by team id.
+        try:
+            from src.ingestion.fpl_client import FPLClient
+            from src.model.preseason import fixture_ticker
+            _c = FPLClient()
+            fxmap = fixture_ticker(_c.get_fixtures(),
+                                   _c.get_bootstrap_static()["teams"], gw, 4)
+        except Exception:  # noqa: BLE001
+            fxmap = {}
 
     if pool.empty:
-        # Early season: not enough current-season form for the model yet, so fall
-        # back to the cold-start seed (last season + this season's fixtures). The
-        # seed already carries this-gameweek (pred_gw1) and blended (pred) values.
-        from src.model.preseason import preseason_predictions
-        seed = preseason_predictions(apply_availability=False)
+        # The upcoming gameweek isn't in the played history yet, so forward-predict
+        # it: prefer THIS season's form (from games played so far), falling back to
+        # last season's seed only until a gameweek has actually been played.
+        from src.model.preseason import preseason_predictions, current_season_seed
+        cs = current_season_seed()
+        seed = preseason_predictions(apply_availability=False,
+                                     seed_override=cs if len(cs) else None)
         if not len(seed):
             return {"ok": False, "team_id": team_id, "gw": gw, "season": SEASON,
                     "error": "Not enough data yet to advise — try again once the "
