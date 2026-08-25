@@ -198,7 +198,8 @@ def current_season_frame(client: FPLClient | None = None) -> pd.DataFrame:
             row["difficulty"] = fx.get("difficulty")   # FPL's own FDR (1-5)
             row["xp"] = None
             for f in _HISTORY_FIELDS:
-                row[f] = 0
+                row[f] = float("nan")   # unplayed: NaN so it doesn't dilute the
+                                        # rolling form of later upcoming gameweeks
             row["value"] = el.get("now_cost", 0)   # current price for the value feature
             rows.append(row)
     return pd.DataFrame(rows)
