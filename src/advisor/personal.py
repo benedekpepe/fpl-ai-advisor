@@ -407,13 +407,18 @@ def team_fixtures(season, from_gw, n=4):
         return {}
     meta = teams_meta(season)
     fx = hist.dropna(subset=["opponent_team"]).drop_duplicates(["team", "gw"])
+    have_diff = "difficulty" in fx.columns
     out = {}
     for team, grp in fx.groupby("team"):
-        ups = grp[grp["gw"] > from_gw].sort_values("gw").head(n)
+        ups = grp[grp["gw"] >= from_gw].sort_values("gw").head(n)
         lst = []
         for _, r in ups.iterrows():
             code, strength = meta.get(int(r["opponent_team"]), ("?", 3))
-            lst.append({"opp": code, "home": bool(r["was_home"]), "diff": int(strength)})
+            # Prefer FPL's own fixture difficulty (FDR) — it's set even before the
+            # season's 1-5 team strengths are — and fall back to team strength.
+            fdr = r.get("difficulty") if have_diff else None
+            diff = int(fdr) if pd.notna(fdr) else int(strength)
+            lst.append({"opp": code, "home": bool(r["was_home"]), "diff": diff})
         out[team] = lst
     return out
 

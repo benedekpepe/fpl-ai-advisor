@@ -195,6 +195,7 @@ def current_season_frame(client: FPLClient | None = None) -> pd.DataFrame:
             row["opponent_team"] = fx.get("team_a") if home else fx.get("team_h")
             row["was_home"] = home
             row["kickoff_time"] = fx.get("kickoff_time")
+            row["difficulty"] = fx.get("difficulty")   # FPL's own FDR (1-5)
             row["xp"] = None
             for f in _HISTORY_FIELDS:
                 row[f] = 0
