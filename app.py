@@ -606,13 +606,7 @@ def _live_home():
         st.caption("The season hasn't kicked off yet — build your opening squad below.")
         preseason_view()
         return
-    choice = st.radio("Mode", ["Weekly advice", "Build from scratch"],
-                      horizontal=True, label_visibility="collapsed")
-    if choice == "Build from scratch":
-        st.caption("Optimal squad from scratch — handy for a Wildcard or Free Hit.")
-        preseason_view()
-    else:
-        live_advice_view()
+    live_advice_view()   # season underway: weekly advice only
 
 
 def _demo_advice():

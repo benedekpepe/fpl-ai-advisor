@@ -46,10 +46,19 @@ def team_strength(seasons) -> pd.DataFrame:
 
 
 def teams_meta(season: str) -> dict:
-    """``{team_id: (short_code, strength 1-5)}`` for one season (for the UI)."""
+    """``{team_id: (short_code, strength 1-5)}`` for one season (for the UI).
+
+    Early in a season FPL hasn't set the 1-5 ``strength`` yet (it's NaN), so the
+    difficulty defaults to 3 (medium) while the short name still resolves."""
     try:
         t = _teams_csv(season)
-        return {int(r["id"]): (str(r["short_name"]), int(r["strength"]))
-                for _, r in t.iterrows()}
     except Exception:
         return {}
+    out = {}
+    for _, r in t.iterrows():
+        try:
+            s = int(r["strength"]) if pd.notna(r.get("strength")) else 3
+        except (ValueError, TypeError):
+            s = 3
+        out[int(r["id"])] = (str(r["short_name"]), s)
+    return out

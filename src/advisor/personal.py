@@ -552,8 +552,12 @@ def build_advice(team_id, gw=None, ft_override=None, picks_gw=None):
     near_deadline = (deadline_gw - gw) <= 1
     rec_chip = recommend_chip(timing, gw)
     chip_replaces = rec_chip in ("wildcard", "freehit")
-    chip_replaces = rec_chip in ("wildcard", "freehit")
-    rec_squad = optimize_squad(pool_b, budget=int(round(total_money))) if chip_replaces else None
+    # Free Hit is one week only, so optimise it on THIS gameweek's projection;
+    # Wildcard is permanent, so optimise on the blended next-few-GW run (pool_b).
+    rec_squad = None
+    if chip_replaces:
+        chip_pool = pool if rec_chip == "freehit" else pool_b
+        rec_squad = optimize_squad(chip_pool, budget=int(round(total_money)))
 
     # transfer block
     new_sq = None
