@@ -153,15 +153,29 @@ def current_season_frame(client: FPLClient | None = None) -> pd.DataFrame:
     (name, position, club) comes from bootstrap-static; the per-gameweek rows
     come from each player's element-summary.
 
-    NOTE: one request per player (~600). Verify volume/rate-limit behaviour and
-    the field mapping against a live season before relying on this.
+    NOTE: one request per player (~600), fetched in parallel (thread pool) to keep
+    the first load quick. Verify field mapping against a live season before relying
+    on this.
     """
+    from concurrent.futures import ThreadPoolExecutor
+
     client = client_or_default(client)
     boot = client.get_bootstrap_static()
     team_name = {t["id"]: t["short_name"] for t in boot["teams"]}
 
+    def _fetch(el):
+        try:
+            return el, client.get_element_summary(el["id"])
+        except Exception:  # noqa: BLE001 — skip a player whose summary fails
+            return el, {}
+
+    # Network-bound, so a modest pool cuts ~600 sequential calls to a fraction of
+    # the time without hammering the API hard enough to trip rate limits.
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        fetched = list(pool.map(_fetch, boot["elements"]))
+
     rows = []
-    for el in boot["elements"]:
+    for el, summary in fetched:
         meta = {
             "season": ACTIVE_SEASON,
             "element": el["id"],
@@ -169,7 +183,6 @@ def current_season_frame(client: FPLClient | None = None) -> pd.DataFrame:
             "position": POSITION.get(el.get("element_type")),
             "team": team_name.get(el.get("team")),
         }
-        summary = client.get_element_summary(el["id"])
         for h in summary.get("history", []):
             row = dict(meta)
             row["gw"] = h.get("round")
@@ -183,8 +196,8 @@ def current_season_frame(client: FPLClient | None = None) -> pd.DataFrame:
             rows.append(row)
         # Upcoming (unplayed) fixtures — so the model can project the NEXT few
         # gameweeks from this season's form (rolling features come from the games
-        # already played), instead of having no row to score. Stats are 0 (not yet
-        # played); price is the current price so the value feature is right.
+        # already played), instead of having no row to score. Stats are NaN (not
+        # yet played); price is the current price so the value feature is right.
         for fx in summary.get("fixtures", [])[:UPCOMING_HORIZON]:
             if fx.get("event") is None:
                 continue

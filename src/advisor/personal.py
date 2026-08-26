@@ -67,7 +67,7 @@ def predict_all(season: str) -> pd.DataFrame:
     # the player's actual points-per-game so recent output — not just price — ranks
     # players while the sample is tiny.
     if "cum_ppg" in feats.columns and "games_played" in feats.columns:
-        fw = (0.25 * (1 - (feats["games_played"] - 1) / 5.0)).clip(lower=0, upper=1)
+        fw = (0.4 * (1 - (feats["games_played"] - 1) / 5.0)).clip(lower=0, upper=1)
         feats["pred"] = (1 - fw) * feats["pred"] + fw * feats["cum_ppg"].fillna(0)
     return feats.groupby(["gw", "element"]).agg(
         name=("name", "first"), position=("position", "first"),
@@ -138,15 +138,22 @@ def chips_used(history: dict, target_gw: int) -> dict:
             if lo <= c["event"] <= hi and c["name"] in CHIP_LABEL}
 
 
+# Free Hit / Wildcard are worth burning only for a big swing — a blank or double
+# gameweek, or an injury crisis — not to tidy a slightly sub-optimal team early on
+# (normal transfers do that). Require a meaningful value before recommending them.
+# (Tunable: raise to hold chips longer, lower to deploy them more readily.)
+CHIP_MIN_VALUE = {"freehit": 15.0, "wildcard": 6.0}
+
+
 def recommend_chip(timing: dict, gw: int):
     """The chip to play THIS gameweek, or None.
 
     `timing` maps each chip to a value-sorted ``[(gameweek, value), ...]`` over
     the remaining window. A chip is recommended only when `gw` is its best week
-    (its value peaks now, so waiting can't do better before it expires); if
-    several peak now, the highest-value one wins. If every remaining chip peaks
-    later, returns None (hold). This keeps the headline call consistent with the
-    per-chip "best GWx" shown in the table.
+    (its value peaks now, so waiting can't do better before it expires) *and*,
+    for Free Hit / Wildcard, only when that value clears ``CHIP_MIN_VALUE`` — so
+    they're saved for a real swing rather than a normal early-season gap. If
+    several qualify now, the highest-value one wins; if none, returns None (hold).
     """
     candidates = {}
     for chip, ranked in timing.items():
@@ -154,8 +161,11 @@ def recommend_chip(timing: dict, gw: int):
             continue
         best_gw = ranked[0][0]
         this_val = dict(ranked).get(gw)
-        if this_val is not None and best_gw == gw:
-            candidates[chip] = this_val
+        if this_val is None or best_gw != gw:
+            continue
+        if this_val < CHIP_MIN_VALUE.get(chip, 0.0):
+            continue                       # not a big enough swing to burn the chip
+        candidates[chip] = this_val
     return max(candidates, key=candidates.get) if candidates else None
 
 
