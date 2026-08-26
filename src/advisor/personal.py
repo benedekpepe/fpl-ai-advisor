@@ -67,7 +67,7 @@ def predict_all(season: str) -> pd.DataFrame:
     # the player's actual points-per-game so recent output — not just price — ranks
     # players while the sample is tiny.
     if "cum_ppg" in feats.columns and "games_played" in feats.columns:
-        fw = (0.4 * (1 - (feats["games_played"] - 1) / 5.0)).clip(lower=0, upper=1)
+        fw = (0.25 * (1 - (feats["games_played"] - 1) / 5.0)).clip(lower=0, upper=1)
         feats["pred"] = (1 - fw) * feats["pred"] + fw * feats["cum_ppg"].fillna(0)
     return feats.groupby(["gw", "element"]).agg(
         name=("name", "first"), position=("position", "first"),
