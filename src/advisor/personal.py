@@ -142,7 +142,7 @@ def chips_used(history: dict, target_gw: int) -> dict:
 # gameweek, or an injury crisis — not to tidy a slightly sub-optimal team early on
 # (normal transfers do that). Require a meaningful value before recommending them.
 # (Tunable: raise to hold chips longer, lower to deploy them more readily.)
-CHIP_MIN_VALUE = {"freehit": 15.0, "wildcard": 6.0}
+CHIP_MIN_VALUE = {"freehit": 8.0, "wildcard": 6.0}
 
 
 def recommend_chip(timing: dict, gw: int):
@@ -338,6 +338,12 @@ def chip_timing(squad_ids, preds_all, current_gw, available, deadline_gw):
         your_xi[g] = start["pred"].sum() + start[start["captain"] == 1]["pred"].sum()
         opt_xi[g] = best_squad_value(preds_all[preds_all["gw"] == g])
     valid = sorted(your_xi)
+    # Your team's typical weekly shortfall vs the best achievable XI. Free Hit is
+    # only worth it when a SPECIFIC week is unusually bad for you (a blank/double
+    # gameweek), i.e. the gap exceeds this baseline — not when you're generally
+    # sub-optimal, which is a job for transfers or a Wildcard.
+    _fh_gaps = sorted(max(0.0, opt_xi[g] - your_xi[g]) for g in valid)
+    baseline_gap = _fh_gaps[len(_fh_gaps) // 2] if _fh_gaps else 0.0   # median
 
     # Wildcard: one fixed squad optimised over the whole remaining window,
     # then valued week-by-week (re-picking the XI each week from those 15).
@@ -361,7 +367,7 @@ def chip_timing(squad_ids, preds_all, current_gw, available, deadline_gw):
             elif chip == "bboost":
                 val = bench_sum[g]
             elif chip == "freehit":
-                val = max(0.0, opt_xi[g] - your_xi[g])
+                val = max(0.0, (opt_xi[g] - your_xi[g]) - baseline_gap)
             else:  # wildcard: sustained weekly advantage of the fixed WC squad from g on
                 rest = [h for h in valid if h >= g]
                 val = (sum(max(0.0, wc_weekly[h] - your_xi[h]) for h in rest) / len(rest)
