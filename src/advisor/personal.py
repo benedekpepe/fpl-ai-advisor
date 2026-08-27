@@ -156,7 +156,7 @@ def chips_used(history: dict, target_gw: int) -> dict:
 # gameweek, or an injury crisis — not to tidy a slightly sub-optimal team early on
 # (normal transfers do that). Require a meaningful value before recommending them.
 # (Tunable: raise to hold chips longer, lower to deploy them more readily.)
-CHIP_MIN_VALUE = {"freehit": 8.0, "wildcard": 6.0}
+CHIP_MIN_VALUE = {"freehit": 8.0, "wildcard": 6.0, "bboost": 16.0, "3xc": 8.0}
 
 
 def recommend_chip(timing: dict, gw: int):

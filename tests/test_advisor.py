@@ -88,7 +88,7 @@ def test_future_chip_not_counted_as_used_yet():
 
 # ----------------------------- chip timing --------------------------------
 def test_recommend_chip_when_it_peaks_now():
-    timing = {"bboost": [(5, 10.0), (6, 9.0)]}      # best week is GW5
+    timing = {"bboost": [(5, 18.0), (6, 9.0)]}      # best week is GW5, clears threshold
     assert recommend_chip(timing, 5) == "bboost"
 
 
@@ -98,7 +98,7 @@ def test_no_recommendation_when_peak_is_later():
 
 
 def test_highest_value_wins_when_several_peak_now():
-    timing = {"bboost": [(5, 10.0)], "3xc": [(5, 8.0)]}
+    timing = {"bboost": [(5, 20.0)], "3xc": [(5, 9.0)]}   # both clear their thresholds
     assert recommend_chip(timing, 5) == "bboost"
 
 
