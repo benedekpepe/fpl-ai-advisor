@@ -33,10 +33,15 @@ stack-aware squad optimiser, behind a Streamlit dashboard.
   **seeded from last season**.
 - **Weekly advice** — once the season is underway (the first deadline has
   passed): captain, transfer(s) with the hit math, best XI, and chip timing for
-  the **upcoming** gameweek (the one you can still change), computed from your
-  current squad. In the opening gameweeks — before there's enough current-season
-  form — it falls back to the same last-season **seed** the builder uses, then
-  shifts to live form as results come in.
+  the **upcoming** gameweek (the one you can still change), projected from *this*
+  season's form. Each player's next few gameweeks are built from their played
+  games and scored against the actual upcoming fixtures, so every card shows both
+  a **this-gameweek** projection and a **next-4 average** (starters and bench).
+  In the opening weeks it also **dampens price** (so a pricey flop doesn't outrank
+  an in-form cheap player) and **blends in recent points-per-game** (so a strong
+  start actually counts); both fade out by ~GW6 back to the validated model. If
+  there is genuinely no current-season data yet, it falls back to the last-season
+  **seed** the builder uses.
 
 ## What it does
 
@@ -46,9 +51,13 @@ stack-aware squad optimiser, behind a Streamlit dashboard.
 - **Captain** — the highest projected scorer in your starting XI.
 - **Transfers** — the swap(s) that add the most projected points, with the hit
   math made explicit (a move is only urged when the gain clears the −4).
-- **Best XI** — the optimal lineup and formation from your current 15.
-- **Chip timing** — for each unused chip it finds its best week in the remaining
-  half of the season, and only says *play now* when this week **is** that peak.
+- **Best XI** — the optimal lineup and formation from your current 15, with each
+  player's next-4 fixtures and difficulty (FPL's own FDR) on the card.
+- **Chip timing** — for each unused chip it finds its best week and only says
+  *play now* when this week **is** that peak. Free Hit and Wildcard are held for a
+  real swing — a blank/double gameweek or an injury crisis — measured as the
+  **excess** over your team's typical weekly shortfall, so a normal early-season
+  gap (which transfers fix) doesn't burn a chip.
 - **Availability-aware** — injured, suspended or loaned-out players are excluded
   from selection, benched if you own them, become transfer-out candidates, and
   are never recommended as buys; any injured or doubtful players in your own
@@ -75,8 +84,8 @@ stack-aware squad optimiser, behind a Streamlit dashboard.
 3. **Model** — a two-stage expected-points model: `P(plays) × E[points | plays]`,
    each stage a LightGBM model. Splitting "will they play" from "how well" handles
    rotation better than a single regressor.
-4. **Cold start** — before any gameweek there is no current-season form, so each
-   player's form is seeded from their **previous-season** per-game averages,
+4. **Cold start & early season** — before any gameweek, form is seeded from each
+   player's **previous-season** per-game averages,
    joined to this season's players by their permanent FPL `code` (ids change
    between seasons). Players with no previous-season data (new signings, promoted
    clubs, youth) get a position + price based estimate; players whose permanent code

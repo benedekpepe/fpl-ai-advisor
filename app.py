@@ -261,7 +261,10 @@ def pitch_html(rows, bb=False):
     bench = [r for r in rows if r["role"] == "bench"]
     chips = "".join(
         f"<span class='bp tip' data-tip=\"{_tip(r)}\">{short_name(r['name'])} "
-        f"<span class='tm'>{team_code(r.get('team'))}</span> {r['pred']:.1f}</span>"
+        f"<span class='tm'>{team_code(r.get('team'))}</span> {r['pred']:.1f}"
+        + (f"<span style='opacity:.55;font-size:10px'> {r['pred_run']:.1f}</span>"
+           if r.get('pred_run') is not None else "")
+        + "</span>"
         for r in (gk + bench))
     bcls = " bb" if bb else ""
     blabel = "Bench Boost" if bb else "Bench"
