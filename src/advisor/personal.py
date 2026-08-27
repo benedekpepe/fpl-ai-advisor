@@ -45,29 +45,43 @@ def predict_all(season: str) -> pd.DataFrame:
     """
     bundle = joblib.load(MODEL_PATH)
     clf, reg, cols = bundle["clf"], bundle["reg"], bundle["cols"]
-    feats = build_feature_frame(attach_opponent_strength(load_history()))
+    raw = load_history()
+    feats = build_feature_frame(attach_opponent_strength(raw))
     feats = feats[feats["season"] == season].copy()
     if feats.empty:                       # early season: no current-season rows yet
         return pd.DataFrame(columns=["gw", "id", "name", "position", "team",
                                      "price", "pred", "actual"])
-    # Early-season value dampening. The model learned on full seasons, where price
-    # strongly predicts points; with only a game or two of form it leans on price
-    # so hard that a pricey flop outranks an in-form cheap player. So shrink value
-    # toward the per-position median until ~4 games are in, then use the real price
-    # (what the model was validated on — full-season data is unaffected).
+    # Games actually played this season (a scalar). Upcoming (unplayed) rows carry
+    # NaN stats; a plain cumcount counts them and inflates games_played for later
+    # future weeks, which would make the early-season adjustments fade across the
+    # horizon and wrongly inflate the Free-Hit gap in the nearest week. So the
+    # form-related adjustments key off this scalar instead — uniform across weeks.
+    try:
+        rs = raw[raw["season"] == season] if "season" in raw.columns else raw
+        n_played = int(rs.loc[rs["minutes"].notna(), "gw"].nunique())
+    except Exception:  # noqa: BLE001
+        n_played = int(feats["games_played"].min()) if len(feats) else 0
+    n_played = max(n_played, 0)
+
     X = feats[cols].copy()
-    if "value" in X.columns and "games_played" in feats.columns:
-        shrink = (feats["games_played"].clip(lower=0) / 4.0).clip(upper=1.0)
+    if "games_played" in X.columns:        # don't let unplayed future rows inflate it
+        X["games_played"] = X["games_played"].clip(upper=max(n_played, 1))
+    # Early-season value dampening. With little form the model leans on price so
+    # hard a pricey flop outranks an in-form cheap player. Shrink value toward the
+    # per-position median until ~4 games are in, then use the real price (what the
+    # model was validated on — full-season data is unaffected).
+    if "value" in X.columns:
+        shrink = min(n_played / 4.0, 1.0)
         med = feats.groupby("position")["value"].transform("median").fillna(
             feats["value"].median())
         X["value"] = (med + (feats["value"] - med) * shrink).to_numpy()
     feats["pred"] = clf.predict_proba(X)[:, 1] * reg.predict(X)
     # Early-season recency blend (fades out by ~GW6). The model regresses a single
-    # game hard toward the mean, so a big GW1 barely moves its projection. Blend in
-    # the player's actual points-per-game so recent output — not just price — ranks
-    # players while the sample is tiny.
-    if "cum_ppg" in feats.columns and "games_played" in feats.columns:
-        fw = (0.4 * (1 - (feats["games_played"] - 1) / 5.0)).clip(lower=0, upper=1)
+    # game hard toward the mean, so a big GW1 barely moves its projection; blend in
+    # actual points-per-game so recent output — not just price — ranks players
+    # while the sample is tiny.
+    if "cum_ppg" in feats.columns and n_played >= 1:
+        fw = max(0.0, min(1.0, 0.25 * (1 - (n_played - 1) / 5.0)))
         feats["pred"] = (1 - fw) * feats["pred"] + fw * feats["cum_ppg"].fillna(0)
     return feats.groupby(["gw", "element"]).agg(
         name=("name", "first"), position=("position", "first"),
