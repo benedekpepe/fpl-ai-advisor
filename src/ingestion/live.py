@@ -162,6 +162,11 @@ def current_season_frame(client: FPLClient | None = None) -> pd.DataFrame:
     client = client_or_default(client)
     boot = client.get_bootstrap_static()
     team_name = {t["id"]: t["short_name"] for t in boot["teams"]}
+    # Gameweeks that are fully finished. A gameweek still in progress has players
+    # whose match hasn't kicked off showing 0 minutes/points in their history — an
+    # incomplete row that would drag their form down and trigger phantom transfers.
+    # So form is built only from finished gameweeks; the in-progress one is skipped.
+    finished_gws = {e["id"] for e in boot.get("events", []) if e.get("finished")}
 
     def _fetch(el):
         try:
@@ -184,6 +189,8 @@ def current_season_frame(client: FPLClient | None = None) -> pd.DataFrame:
             "team": team_name.get(el.get("team")),
         }
         for h in summary.get("history", []):
+            if finished_gws and h.get("round") not in finished_gws:
+                continue                   # gameweek still in progress — incomplete
             row = dict(meta)
             row["gw"] = h.get("round")
             row["fixture"] = h.get("fixture")
