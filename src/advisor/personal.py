@@ -76,6 +76,7 @@ def predict_all(season: str) -> pd.DataFrame:
             feats["value"].median())
         X["value"] = (med + (feats["value"] - med) * shrink).to_numpy()
     feats["pred"] = clf.predict_proba(X)[:, 1] * reg.predict(X)
+    feats["pred_model"] = feats["pred"]        # unblended (reliable) — for captaincy
     # Early-season recency blend (fades out by ~GW6). The model regresses a single
     # game hard toward the mean, so a big GW1 barely moves its projection; blend in
     # actual points-per-game so recent output — not just price — ranks players
@@ -86,7 +87,8 @@ def predict_all(season: str) -> pd.DataFrame:
     return feats.groupby(["gw", "element"]).agg(
         name=("name", "first"), position=("position", "first"),
         team=("team", "first"), price=("value", "first"),
-        pred=("pred", "sum"), actual=("total_points", "sum"),
+        pred=("pred", "sum"), pred_model=("pred_model", "sum"),
+        actual=("total_points", "sum"),
     ).reset_index().rename(columns={"element": "id"})
 
 
@@ -163,20 +165,24 @@ def recommend_chip(timing: dict, gw: int):
     """The chip to play THIS gameweek, or None.
 
     `timing` maps each chip to a value-sorted ``[(gameweek, value), ...]`` over
-    the remaining window. A chip is recommended only when `gw` is its best week
-    (its value peaks now, so waiting can't do better before it expires) *and*,
-    for Free Hit / Wildcard, only when that value clears ``CHIP_MIN_VALUE`` — so
-    they're saved for a real swing rather than a normal early-season gap. If
-    several qualify now, the highest-value one wins; if none, returns None (hold).
+    the remaining window. A chip is recommended when this gameweek is **near** its
+    best week (within a margin, so a huge, roughly-flat gain — e.g. a Wildcard for
+    a broken team — isn't held five weeks for a marginally better peak) *and* its
+    value clears ``CHIP_MIN_VALUE`` (a real swing, not a small early-season gap or
+    a weak bench). If several qualify, the highest-value one wins; else None (hold).
+    This matches the per-chip "worth it now" badge shown in the table.
     """
     candidates = {}
     for chip, ranked in timing.items():
         if not ranked:
             continue
-        best_gw = ranked[0][0]
+        best_gw, best_val = ranked[0]
         this_val = dict(ranked).get(gw)
-        if this_val is None or best_gw != gw:
+        if this_val is None:
             continue
+        margin = max(1.0, 0.1 * best_val)
+        if this_val < best_val - margin:
+            continue                       # a clearly better week is still ahead
         if this_val < CHIP_MIN_VALUE.get(chip, 0.0):
             continue                       # not a big enough swing to burn the chip
         candidates[chip] = this_val
@@ -563,6 +569,14 @@ def build_advice(team_id, gw=None, ft_override=None, picks_gw=None):
 
     # This gameweek's best XI + captain — what to actually field and captain now.
     _, base_xi = optimize_xi(squad, conflict_penalty=CONFLICT_PENALTY)
+    # Captain on the reliable (unblended) model projection, not the recency-blended
+    # one — so a one-game fluke (e.g. a defender's big GW1 haul) doesn't take the
+    # armband over a proven premium. Falls back to the fielded pred if unavailable.
+    if "pred_model" in base_xi.columns:
+        xi_start = base_xi[base_xi["starting"] == 1]
+        if len(xi_start) and xi_start["pred_model"].notna().any():
+            cap_id = xi_start.loc[xi_start["pred_model"].idxmax(), "id"]
+            base_xi["captain"] = (base_xi["id"] == cap_id).astype(int)
     cap = base_xi[base_xi["captain"] == 1].iloc[0]
     nm = pool.set_index("id")["name"].to_dict()
     pos = pool.set_index("id")["position"].to_dict()
@@ -666,7 +680,8 @@ def build_advice(team_id, gw=None, ft_override=None, picks_gw=None):
         bg, bval = ranked[0]
         tv = this_vals.get(chip)
         margin = max(1.0, 0.1 * bval)
-        near_best = (tv is not None and bval > 0 and tv >= bval - margin)
+        near_best = (tv is not None and bval > 0 and tv >= bval - margin
+                     and tv >= CHIP_MIN_VALUE.get(chip, 0.0))
         wait_gain = None if tv is None else round(max(0.0, bval - tv), 1)
         row = {"chip": chip, "label": CHIP_LABEL[chip], "best_gw": int(bg), "best_val": float(bval),
                "this_val": (None if tv is None else float(tv)),
