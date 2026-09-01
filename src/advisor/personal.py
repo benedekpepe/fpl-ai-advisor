@@ -308,7 +308,7 @@ def plan_exact(current_ids, pool, bank, k):
     objective = (pulp.lpSum(pred[i] * y[i] for i in idx)
                  + pulp.lpSum(pred[i] * c[i] for i in idx)
                  + BENCH_WEIGHT * pulp.lpSum(pred[i] * (x[i] - y[i]) for i in idx))
-    objective = objective - conflict_dock(prob, y, p, CONFLICT_PENALTY)
+    objective = objective - conflict_dock(prob, y, p, 0.0)  # field/transfer: max expected pts, no hedging
     prob += objective
     for i in idx:
         prob += y[i] <= x[i]
@@ -568,14 +568,17 @@ def build_advice(team_id, gw=None, ft_override=None, picks_gw=None):
                 "error": "Not enough player data to advise this gameweek."}
 
     # This gameweek's best XI + captain — what to actually field and captain now.
-    _, base_xi = optimize_xi(squad, conflict_penalty=CONFLICT_PENALTY)
-    # Captain on the reliable (unblended) model projection, not the recency-blended
-    # one — so a one-game fluke (e.g. a defender's big GW1 haul) doesn't take the
-    # armband over a proven premium. Falls back to the fielded pred if unavailable.
+    _, base_xi = optimize_xi(squad, conflict_penalty=0.0)   # field the best XI by expected points
+    # Captain the best attacker (MID/FWD) on the reliable (unblended) projection.
+    # Captaincy is about ceiling — which keepers and defenders rarely have — and a
+    # single big gameweek can inflate anyone's form, so the armband goes to the top
+    # projected attacker, not a one-game fluke at the back.
     if "pred_model" in base_xi.columns:
         xi_start = base_xi[base_xi["starting"] == 1]
-        if len(xi_start) and xi_start["pred_model"].notna().any():
-            cap_id = xi_start.loc[xi_start["pred_model"].idxmax(), "id"]
+        att = xi_start[xi_start["position"].isin(["MID", "FWD"])]
+        pick = att if len(att) and att["pred_model"].notna().any() else xi_start
+        if len(pick) and pick["pred_model"].notna().any():
+            cap_id = pick.loc[pick["pred_model"].idxmax(), "id"]
             base_xi["captain"] = (base_xi["id"] == cap_id).astype(int)
     cap = base_xi[base_xi["captain"] == 1].iloc[0]
     nm = pool.set_index("id")["name"].to_dict()
@@ -597,7 +600,7 @@ def build_advice(team_id, gw=None, ft_override=None, picks_gw=None):
     pool_b = pool.copy()
     pool_b["pred"] = pool_b["pred_blend"]
     squad_b = pool_b[pool_b["id"].isin(ids)].copy()
-    base_val, _ = optimize_xi(squad_b, conflict_penalty=CONFLICT_PENALTY)
+    base_val, _ = optimize_xi(squad_b, conflict_penalty=0.0)
 
     # transfer options (0..ft+2 transfers), net of -4 hits
     options = {0: (base_val, base_xi, set(), set())}
