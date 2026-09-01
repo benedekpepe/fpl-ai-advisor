@@ -308,7 +308,7 @@ def plan_exact(current_ids, pool, bank, k):
     objective = (pulp.lpSum(pred[i] * y[i] for i in idx)
                  + pulp.lpSum(pred[i] * c[i] for i in idx)
                  + BENCH_WEIGHT * pulp.lpSum(pred[i] * (x[i] - y[i]) for i in idx))
-    objective = objective - conflict_dock(prob, y, p, 0.0)  # field/transfer: max expected pts, no hedging
+    objective = objective - conflict_dock(prob, y, p, CONFLICT_PENALTY)
     prob += objective
     for i in idx:
         prob += y[i] <= x[i]
@@ -568,7 +568,7 @@ def build_advice(team_id, gw=None, ft_override=None, picks_gw=None):
                 "error": "Not enough player data to advise this gameweek."}
 
     # This gameweek's best XI + captain — what to actually field and captain now.
-    _, base_xi = optimize_xi(squad, conflict_penalty=0.0)   # field the best XI by expected points
+    _, base_xi = optimize_xi(squad, conflict_penalty=CONFLICT_PENALTY)
     # Captain the best attacker (MID/FWD) on the reliable (unblended) projection.
     # Captaincy is about ceiling — which keepers and defenders rarely have — and a
     # single big gameweek can inflate anyone's form, so the armband goes to the top
@@ -600,7 +600,7 @@ def build_advice(team_id, gw=None, ft_override=None, picks_gw=None):
     pool_b = pool.copy()
     pool_b["pred"] = pool_b["pred_blend"]
     squad_b = pool_b[pool_b["id"].isin(ids)].copy()
-    base_val, _ = optimize_xi(squad_b, conflict_penalty=0.0)
+    base_val, _ = optimize_xi(squad_b, conflict_penalty=CONFLICT_PENALTY)
 
     # transfer options (0..ft+2 transfers), net of -4 hits
     options = {0: (base_val, base_xi, set(), set())}
