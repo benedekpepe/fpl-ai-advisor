@@ -88,6 +88,7 @@ def predict_all(season: str) -> pd.DataFrame:
         name=("name", "first"), position=("position", "first"),
         team=("team", "first"), price=("value", "first"),
         pred=("pred", "sum"), pred_model=("pred_model", "sum"),
+        xgi=("roll_expected_goal_involvements_5", "first"),
         actual=("total_points", "sum"),
     ).reset_index().rename(columns={"element": "id"})
 

@@ -33,7 +33,18 @@ def conflict_dock(prob, y, p, conflict_penalty, min_pred=2.5):
     match = p["match"].to_dict()
     team = p["team"].to_dict()
     pos = p["position"].to_dict()
-    attack = {"MID", "FWD"}
+    xgi = p["xgi"].to_dict() if "xgi" in p.columns else {}
+    XGI_ATTACK = 0.2                       # per-game xGI above which a mid/fwd is a
+    #                                        genuine attacking threat (vs defcon)
+
+    def role(i):
+        if pos[i] in ("GK", "DEF"):
+            return "def"                   # clean-sheet reliant
+        # A mid/fwd only threatens an opposing defence if they actually attack; a
+        # defensive midfielder scoring off tackles/CBIT (defcon) does not, so it
+        # conflicts with nobody. Default to attacker when xGI is unknown.
+        return "att" if xgi.get(i, 1.0) >= XGI_ATTACK else "neutral"
+
     cand = [i for i in idx if pred[i] >= min_pred and pd.notna(match.get(i))]
     docks = []
     for a in range(len(cand)):
@@ -41,10 +52,17 @@ def conflict_dock(prob, y, p, conflict_penalty, min_pred=2.5):
             i, j = cand[a], cand[b]
             if match[i] != match[j] or team[i] == team[j]:
                 continue                       # not the same match, or same side
-            ai, aj = pos[i] in attack, pos[j] in attack
-            weight = 1.0 if ai != aj else (0.6 if not ai else 0.0)
+            ri, rj = role(i), role(j)
+            if ri == "neutral" or rj == "neutral":
+                weight = 0.0                    # a defensive mid conflicts with no-one
+            elif ri != rj:
+                weight = 1.0                    # attacker vs clean-sheet defence
+            elif ri == "def":
+                weight = 0.6                    # two opposing clean-sheet defenders
+            else:
+                weight = 0.0                    # two attackers
             if weight <= 0:
-                continue                       # two attackers: no dock
+                continue
             z = pulp.LpVariable(f"conflict_{i}_{j}", cat="Binary")
             prob += z <= y[i]
             prob += z <= y[j]
