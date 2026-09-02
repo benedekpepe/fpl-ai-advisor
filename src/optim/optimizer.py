@@ -34,16 +34,19 @@ def conflict_dock(prob, y, p, conflict_penalty, min_pred=2.5):
     team = p["team"].to_dict()
     pos = p["position"].to_dict()
     xgi = p["xgi"].to_dict() if "xgi" in p.columns else {}
-    XGI_ATTACK = 0.2                       # per-game xGI above which a mid/fwd is a
-    #                                        genuine attacking threat (vs defcon)
 
-    def role(i):
-        if pos[i] in ("GK", "DEF"):
-            return "def"                   # clean-sheet reliant
-        # A mid/fwd only threatens an opposing defence if they actually attack; a
-        # defensive midfielder scoring off tackles/CBIT (defcon) does not, so it
-        # conflicts with nobody. Default to attacker when xGI is unknown.
-        return "att" if xgi.get(i, 1.0) >= XGI_ATTACK else "neutral"
+    def is_def(i):
+        return pos[i] in ("GK", "DEF")
+
+    def threat(i):
+        # Attacking threat 0..1, scaled by xGI (expected goals + assists) — so a
+        # genuine attacker fully conflicts with an opposing clean sheet, while a
+        # defensive midfielder (mostly defcon points) only lightly does, but isn't
+        # ignored (they can still grab the odd goal or assist). Full threat ≈ 0.5
+        # xGI/game. Defaults to full threat when xGI is unknown (pre-season builder).
+        if is_def(i):
+            return 0.0
+        return min(xgi.get(i, 0.5) / 0.5, 1.0)
 
     cand = [i for i in idx if pred[i] >= min_pred and pd.notna(match.get(i))]
     docks = []
@@ -52,16 +55,14 @@ def conflict_dock(prob, y, p, conflict_penalty, min_pred=2.5):
             i, j = cand[a], cand[b]
             if match[i] != match[j] or team[i] == team[j]:
                 continue                       # not the same match, or same side
-            ri, rj = role(i), role(j)
-            if ri == "neutral" or rj == "neutral":
-                weight = 0.0                    # a defensive mid conflicts with no-one
-            elif ri != rj:
-                weight = 1.0                    # attacker vs clean-sheet defence
-            elif ri == "def":
+            di, dj = is_def(i), is_def(j)
+            if di and dj:
                 weight = 0.6                    # two opposing clean-sheet defenders
+            elif di != dj:
+                weight = threat(i) if dj else threat(j)   # the mid/fwd's xGI threat
             else:
-                weight = 0.0                    # two attackers
-            if weight <= 0:
+                weight = 0.0                    # two mids/fwds
+            if weight <= 0.05:
                 continue
             z = pulp.LpVariable(f"conflict_{i}_{j}", cat="Binary")
             prob += z <= y[i]
