@@ -603,6 +603,27 @@ def build_advice(team_id, gw=None, ft_override=None, picks_gw=None):
     squad_b = pool_b[pool_b["id"].isin(ids)].copy()
     base_val, _ = optimize_xi(squad_b, conflict_penalty=CONFLICT_PENALTY)
 
+    # Post-transfer / chip squads are chosen on the blended run (pool_b), so their
+    # `pred` is the run average. For display, re-attach this-gameweek + next-4
+    # projections, field the XI on this gameweek, and captain the best attacker —
+    # exactly like the current XI, so the two figures read the same way.
+    gw1_map = pool.set_index("id")["pred"].to_dict()          # this gameweek
+    run_map = pool.set_index("id")["pred_blend"].to_dict()    # next-4 average
+
+    def _field(sq):
+        sq = sq.copy()
+        sq["pred"] = sq["id"].map(gw1_map).fillna(sq["pred"])
+        sq["pred_blend"] = sq["id"].map(run_map).fillna(sq["pred"])
+        _, sq = optimize_xi(sq, conflict_penalty=CONFLICT_PENALTY)   # field on this GW
+        if "pred_model" in sq.columns:
+            xs = sq[sq["starting"] == 1]
+            att = xs[xs["position"].isin(["MID", "FWD"])]
+            pk = att if len(att) and att["pred_model"].notna().any() else xs
+            if len(pk) and pk["pred_model"].notna().any():
+                cid = pk.loc[pk["pred_model"].idxmax(), "id"]
+                sq["captain"] = (sq["id"] == cid).astype(int)
+        return _xi_rows(sq, fxmap)
+
     # transfer options (0..ft+2 transfers), net of -4 hits
     options = {0: (base_val, base_xi, set(), set())}
     for k in range(1, ft + 3):
@@ -660,7 +681,7 @@ def build_advice(team_id, gw=None, ft_override=None, picks_gw=None):
                      sorted(ins, key=lambda i: ORDER.get(pos.get(i), 9)))]
         transfer = {"verdict": "TRANSFER", "moves": moves, "k": best_k,
                     "hits": max(0, best_k - ft), "net": round(net(best_k), 2),
-                    "post_xi": _xi_rows(new_sq, fxmap),
+                    "post_xi": _field(new_sq),
                     "bank_after": total_money - float(new_sq["price"].sum()),
                     "ft_left": max(0, ft - best_k),
                     "text": f"Worth +{net(best_k):.2f} pts this week."}
@@ -695,7 +716,7 @@ def build_advice(team_id, gw=None, ft_override=None, picks_gw=None):
         chip_table.append(row)
     rec_detail = None
     if rec_chip in ("wildcard", "freehit"):
-        rec_detail = {"type": rec_chip, "squad": _xi_rows(rec_squad, fxmap),
+        rec_detail = {"type": rec_chip, "squad": _field(rec_squad),
                       "bank_after": total_money - float(rec_squad["price"].sum()),
                       "ft_left": ft}
     elif rec_chip == "bboost":
