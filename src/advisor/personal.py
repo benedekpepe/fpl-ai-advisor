@@ -77,12 +77,16 @@ def predict_all(season: str) -> pd.DataFrame:
         X["value"] = (med + (feats["value"] - med) * shrink).to_numpy()
     feats["pred"] = clf.predict_proba(X)[:, 1] * reg.predict(X)
     feats["pred_model"] = feats["pred"]        # unblended (reliable) — for captaincy
-    # Early-season recency blend (fades out by ~GW6). The model regresses a single
-    # game hard toward the mean, so a big GW1 barely moves its projection; blend in
-    # actual points-per-game so recent output — not just price — ranks players
-    # while the sample is tiny.
+    # Early-season recency blend. The model regresses recent form hard toward its
+    # priors (price, position, xG), so actual output — goals, assists, points, and
+    # who's in form against whom — is under-weighted early. Blend in the player's
+    # points-per-game, weighted by how many games back it: light after 1 game (a
+    # single haul can be a fluke), heavier once 2-3 games confirm the form. Fades
+    # back toward the validated model as the season's own sample grows.
     if "cum_ppg" in feats.columns and n_played >= 1:
-        fw = max(0.0, min(1.0, 0.25 * (1 - (n_played - 1) / 5.0)))
+        fw = min(0.15 * n_played, 0.45)
+        if n_played > 6:                   # enough live sample now — let the model lead
+            fw = max(0.15, 0.45 - (n_played - 6) * 0.05)
         feats["pred"] = (1 - fw) * feats["pred"] + fw * feats["cum_ppg"].fillna(0)
     return feats.groupby(["gw", "element"]).agg(
         name=("name", "first"), position=("position", "first"),
