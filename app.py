@@ -92,7 +92,8 @@ CSS = """
 .pl{flex:1 1 0;min-width:0;max-width:98px;text-align:center;animation:rise .5s ease both}
 .shirt{position:relative;background:rgba(8,12,18,.82);border:1px solid rgba(255,255,255,.14);border-radius:12px;
   padding:7px 5px 6px;box-shadow:0 6px 16px rgba(0,0,0,.4)}
-.pl-name{font-size:11.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pl-name{font-size:11.5px;font-weight:600;display:flex;align-items:center;justify-content:center;gap:2px;max-width:100%}
+.pl-name .nm{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
 .pl-meta{display:flex;align-items:center;justify-content:center;gap:6px;margin-top:2px}
 .pl-pred{font-size:13px;font-weight:800;color:#c6ff3a}
 .tm{font-size:9.5px;font-weight:700;letter-spacing:.06em;color:#9fb0c0;background:rgba(255,255,255,.08);
@@ -110,7 +111,7 @@ CSS = """
 .bench.bb{border-color:rgba(198,255,58,.4);background:rgba(198,255,58,.07)}
 .bench.bb .bl{color:#c6ff3a}
 .bench.bb .bp{color:#e8ffc0;background:rgba(198,255,58,.14)}
-.bdg{display:inline-block;min-width:16px;height:16px;line-height:15px;border-radius:50%;
+.bdg{display:inline-block;flex-shrink:0;min-width:16px;height:16px;line-height:15px;border-radius:50%;
   font-size:9.5px;font-weight:800;color:#0a0e14;background:#ffd54a;margin-left:4px;vertical-align:middle}
 .bdg.v{background:#cdd8e6}
 .caps{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:4px}
@@ -244,7 +245,7 @@ def _pl(r):
     run_html = (f"<span class='pl-pred' style='opacity:.55;font-size:10px'>"
                 f"{run:.1f}</span>" if run is not None else "")
     return (f"<div class='pl'><div class='shirt tip' data-tip=\"{_tip(r)}\" style='border-top:3px solid {col}'>"
-            f"<div class='pl-name'>{short_name(r['name'])}{_badge(r)}</div>"
+            f"<div class='pl-name'><span class='nm'>{short_name(r['name'])}</span>{_badge(r)}</div>"
             f"<div class='pl-meta'><span class='tm'>{team_code(r.get('team'))}</span>"
             f"<span class='pl-pred'>{r['pred']:.1f}</span>{run_html}</div>{_fix(r)}</div></div>")
 

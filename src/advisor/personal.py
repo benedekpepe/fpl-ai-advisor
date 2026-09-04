@@ -434,6 +434,34 @@ def _xi_rows(df, fxmap=None):
     return rows
 
 
+def _captain_pool(sq):
+    """Starting attackers (MID/FWD) ranked by projected points — the pool the
+    captain is chosen from. Captaincy is about ceiling, which keepers and
+    defenders rarely have, so the armband stays among attackers; falls back to
+    all starters if there are somehow none."""
+    xs = sq[sq["starting"] == 1]
+    att = xs[xs["position"].isin(["MID", "FWD"])]
+    pk = att if len(att) else xs
+    return pk, "pred"
+
+
+def _captain_id(sq):
+    """Id of the recommended captain — the top starting attacker."""
+    pk, metric = _captain_pool(sq)
+    return int(pk.loc[pk[metric].idxmax(), "id"]) if len(pk) else int(sq.iloc[0]["id"])
+
+
+def _cap_options(sq):
+    """Top-3 captain candidates with projected points and each one's share —
+    computed the same way the recommended captain is, so they never disagree."""
+    pk, metric = _captain_pool(sq)
+    top3 = pk.nlargest(3, metric)
+    tot = float(top3[metric].sum()) or 1.0
+    return [{"name": r["name"], "team": r.get("team"),
+             "pred": round(float(r[metric]), 2),
+             "share": round(float(r[metric]) / tot * 100)} for _, r in top3.iterrows()]
+
+
 def _print_rows(rows, w=24):
     print(f"{'pos':<5}{'player':<{w}}{'pred':>7}{'actual':>8}")
     for r in rows:
@@ -570,17 +598,7 @@ def build_advice(team_id, gw=None, ft_override=None, picks_gw=None):
 
     # This gameweek's best XI + captain — what to actually field and captain now.
     _, base_xi = optimize_xi(squad, conflict_penalty=CONFLICT_PENALTY)
-    # Captain the best attacker (MID/FWD) on the reliable (unblended) projection.
-    # Captaincy is about ceiling — which keepers and defenders rarely have — and a
-    # single big gameweek can inflate anyone's form, so the armband goes to the top
-    # projected attacker, not a one-game fluke at the back.
-    if "pred_model" in base_xi.columns:
-        xi_start = base_xi[base_xi["starting"] == 1]
-        att = xi_start[xi_start["position"].isin(["MID", "FWD"])]
-        pick = att if len(att) and att["pred_model"].notna().any() else xi_start
-        if len(pick) and pick["pred_model"].notna().any():
-            cap_id = pick.loc[pick["pred_model"].idxmax(), "id"]
-            base_xi["captain"] = (base_xi["id"] == cap_id).astype(int)
+    base_xi["captain"] = (base_xi["id"] == _captain_id(base_xi)).astype(int)
     cap = base_xi[base_xi["captain"] == 1].iloc[0]
     nm = pool.set_index("id")["name"].to_dict()
     pos = pool.set_index("id")["position"].to_dict()
@@ -615,14 +633,8 @@ def build_advice(team_id, gw=None, ft_override=None, picks_gw=None):
         sq["pred"] = sq["id"].map(gw1_map).fillna(sq["pred"])
         sq["pred_blend"] = sq["id"].map(run_map).fillna(sq["pred"])
         _, sq = optimize_xi(sq, conflict_penalty=CONFLICT_PENALTY)   # field on this GW
-        if "pred_model" in sq.columns:
-            xs = sq[sq["starting"] == 1]
-            att = xs[xs["position"].isin(["MID", "FWD"])]
-            pk = att if len(att) and att["pred_model"].notna().any() else xs
-            if len(pk) and pk["pred_model"].notna().any():
-                cid = pk.loc[pk["pred_model"].idxmax(), "id"]
-                sq["captain"] = (sq["id"] == cid).astype(int)
-        return _xi_rows(sq, fxmap)
+        sq["captain"] = (sq["id"] == _captain_id(sq)).astype(int)
+        return sq
 
     # transfer options (0..ft+2 transfers), net of -4 hits
     options = {0: (base_val, base_xi, set(), set())}
@@ -653,6 +665,7 @@ def build_advice(team_id, gw=None, ft_override=None, picks_gw=None):
 
     # transfer block
     new_sq = None
+    final_df = base_xi                      # the squad the captain/picks come from
     if chip_replaces:
         cur_ids, new_ids = set(ids), set(rec_squad["id"])
         outs, ins = cur_ids - new_ids, new_ids - cur_ids
@@ -679,9 +692,10 @@ def build_advice(team_id, gw=None, ft_override=None, picks_gw=None):
                   "out_price": int(prc.get(o, 0)), "in_price": int(prc.get(i, 0))} for o, i in
                  zip(sorted(outs, key=lambda i: ORDER.get(pos.get(i), 9)),
                      sorted(ins, key=lambda i: ORDER.get(pos.get(i), 9)))]
+        final_df = _field(new_sq)
         transfer = {"verdict": "TRANSFER", "moves": moves, "k": best_k,
                     "hits": max(0, best_k - ft), "net": round(net(best_k), 2),
-                    "post_xi": _field(new_sq),
+                    "post_xi": _xi_rows(final_df, fxmap),
                     "bank_after": total_money - float(new_sq["price"].sum()),
                     "ft_left": max(0, ft - best_k),
                     "text": f"Worth +{net(best_k):.2f} pts this week."}
@@ -716,36 +730,31 @@ def build_advice(team_id, gw=None, ft_override=None, picks_gw=None):
         chip_table.append(row)
     rec_detail = None
     if rec_chip in ("wildcard", "freehit"):
-        rec_detail = {"type": rec_chip, "squad": _field(rec_squad),
+        final_df = _field(rec_squad)
+        rec_detail = {"type": rec_chip, "squad": _xi_rows(final_df, fxmap),
                       "bank_after": total_money - float(rec_squad["price"].sum()),
                       "ft_left": ft}
     elif rec_chip == "bboost":
         rec_detail = {"type": "bboost",
                       "bench_pts": round(float(base_xi[base_xi["starting"] == 0]["pred"].sum()), 1)}
     elif rec_chip == "3xc":
-        rec_detail = {"type": "3xc", "player": cap["name"], "pred": round(float(cap["pred"]), 2)}
+        fcap = final_df[final_df["captain"] == 1].iloc[0]
+        rec_detail = {"type": "3xc", "player": fcap["name"], "pred": round(float(fcap["pred"]), 2)}
 
     # summary
     if chip_replaces:
         tr = f"Play {CHIP_LABEL[rec_chip]}"
-        summary_cap = rec_squad[rec_squad["captain"] == 1].iloc[0]["name"]
     elif transfer["verdict"] == "HOLD":
-        tr, summary_cap = "Hold (no transfer)", cap["name"]
+        tr = "Hold (no transfer)"
     elif transfer["verdict"] == "BANK":
-        tr, summary_cap = "Bank your free transfer", cap["name"]
+        tr = "Bank your free transfer"
     else:
         tr = f"{best_k} transfer(s): " + ", ".join(f"{m['out']}->{m['in']}" for m in transfer["moves"])
-        summary_cap = new_sq[new_sq["captain"] == 1].iloc[0]["name"]
+    summary_cap = final_df[final_df["captain"] == 1].iloc[0]["name"]
 
-    # top-3 captain candidates from the squad the captain is actually chosen from
-    final = rec_squad if chip_replaces else (new_sq if new_sq is not None else base_xi)
-    fstart = final[final["starting"] == 1]
-    top3 = fstart.nlargest(3, "pred")
-    tot = float(top3["pred"].sum()) or 1.0
-    captain_options = [{"name": rr["name"], "team": rr.get("team"),
-                        "pred": round(float(rr["pred"]), 2),
-                        "share": round(float(rr["pred"]) / tot * 100)}
-                       for _, rr in top3.iterrows()]
+    # top-3 captain candidates — computed the same way as the captain, from the
+    # same squad, so the picks, the (C) badge and the summary never disagree.
+    captain_options = _cap_options(final_df)
 
     return {
         "ok": True, "team_id": int(team_id), "gw": int(gw), "season": SEASON,
