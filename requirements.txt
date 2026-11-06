@@ -11,7 +11,8 @@ lightgbm>=4.1
 scipy>=1.11
 
 # --- optimisation ---
-pulp>=2.7
+# PuLP 4 removes LpVariable.dicts and PULP_CBC_CMD used by the optimisers.
+pulp==3.3.2
 
 # --- dashboard ---
 streamlit==1.51.0
