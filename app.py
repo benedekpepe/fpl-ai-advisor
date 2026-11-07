@@ -7,6 +7,7 @@ import pandas as pd
 import streamlit as st
 
 from src.advisor.personal import build_advice
+from src.ui.insights import INSIGHTS_CSS, forecast_status, lineup_insights, validation_panel
 
 st.set_page_config(page_title="FPL AI Advisor", page_icon="⚽", layout="centered")
 
@@ -121,6 +122,7 @@ CSS = """
 .capc .nm{font-weight:700;font-size:13.5px;margin-top:3px}
 .capc .dt{font-size:12px;color:#aeb9c6;margin-top:3px}
 .capc .pct{color:#ffd54a;font-weight:700}
+.fxc.d0{background:#334155;color:#a5b4c6}
 .legend{color:#7d8a99;font-size:11.5px;margin:10px 0 4px}
 .badge{display:inline-block;padding:4px 12px;border-radius:8px;font-weight:800;font-size:12px;letter-spacing:.05em;color:#0a0e14}
 .mv{display:flex;align-items:center;gap:10px;margin:7px 0;font-size:14px}
@@ -235,7 +237,7 @@ def _fix(r):
     if not fx:
         return ""
     cells = "".join(
-        f"<span class='fxc d{f['diff']}'>{f['opp']}</span>" for f in fx)
+        f"<span class='fxc d{f['diff']}' title='GW{f.get('gw', '')} · {f.get('count', 1)} match(es)'>{f['opp']}</span>" for f in fx)
     return f"<div class='fx'>{cells}</div>"
 
 
@@ -386,7 +388,10 @@ def render_html(a):
     c = a["chips"]
     cblock = [f"<div class='lbl'>Chips · {a['half_label']} · one per gameweek</div>",
               "<div class='legend' style='margin-top:-2px'>Bar = how close this gameweek is to the chip's best "
-              "week — a full bar means now is a great time to play it. ‘This GW' is its value if played now.</div>"]
+              "forecast week — a full bar means now matches that peak. ‘This GW' is its value if played now.</div>"
+              f"<div class='note'>Forecast window: GW{a['gw']}–GW{c.get('forecast_end', a['gw'])}</div>"]
+    if c.get("error"):
+        cblock.append(f"<div class='note'>{c['error']}</div>")
     if not c["table"]:
         cblock.append("<div class='note'>No chips this half.</div>")
     else:
@@ -433,11 +438,13 @@ def render_html(a):
             elif d["type"] == "3xc":
                 cblock.append(f"<div class='note'>Triple Captain on <b>{d['player']}</b> "
                               f"(pred {d['pred']:.2f} → ×3).</div>")
+        elif not any(r.get("this_val") is not None for r in c["table"]):
+            cblock.append("<div class='note'>Not enough forecast data for a play/hold chip recommendation.</div>")
         elif a["half"] == 1:
-            cblock.append(f"<div class='note'>Hold — every remaining chip's best week is still "
-                          f"ahead (play them before the GW{a['deadline_gw']} deadline).</div>")
+            cblock.append(f"<div class='note'>Hold — no remaining chip clears the current forecast threshold. "
+                          f"This set expires at the GW{a['deadline_gw']} deadline.</div>")
         else:
-            cblock.append("<div class='note'>Hold — every remaining chip's best week is still ahead.</div>")
+            cblock.append("<div class='note'>Hold — no remaining chip clears the current forecast threshold.</div>")
 
     flags = a.get("squad_flags") or []
     flagblock = ""
@@ -451,13 +458,13 @@ def render_html(a):
                      "border-left:3px solid #f59e0b;background:rgba(245,158,11,0.10)'>"
                      f"⚠ Availability in your squad: {items}</div>")
 
-    return (CSS + "<div class='fpl'><div class='fpl-wrap'>"
+    return (CSS + INSIGHTS_CSS + "<div class='fpl'><div class='fpl-wrap'>"
             f"<div class='rhead'>Gameweek {a['gw']} · Team {a['team_id']} · {season_fmt(a['season'])}</div>"
-            f"{meta}{hero}{flagblock}"
+            f"{forecast_status(a)}{meta}{hero}{flagblock}"
             f"<div class='lbl'>Best XI from your current squad</div>{pitch_html(a['current_xi'], bb=bb)}{FX_LEGEND}"
-            f"{summary_caption(a['current_xi'])}"
+            f"{summary_caption(a['current_xi'])}{lineup_insights(a)}"
             + capblock + "".join(tblock) + "".join(cblock) +
-            "<div class='foot'><span>Unofficial tool — not affiliated with the Premier League or FPL. "
+            validation_panel() + "<div class='foot'><span>Unofficial tool — not affiliated with the Premier League or FPL. "
             "Predictions are uncertain; use as a guide, not gospel.</span>"
             f"<a class='foot-link' href='{AUTHOR_URL}' target='_blank' rel='noopener'>"
             "Péter Benedek · B.P. Studio</a></div>"
@@ -572,6 +579,11 @@ def live_advice_view():
                 unsafe_allow_html=True)
     team_id = st.text_input("FPL Team ID", value="", placeholder="e.g. 1234567",
                             help="The number in your FPL team URL: /entry/<this>/")
+    with st.expander("Team settings · optional"):
+        st.caption("Free transfers are estimated from public history. Override if your FPL account shows a different count.")
+        override_ft = st.checkbox("Set my available free transfers")
+        chosen_ft = st.number_input("Available free transfers", min_value=0, max_value=5,
+                                    value=1, step=1, disabled=not override_ft)
     if not st.button("Get advice"):
         return
     if not team_id.strip().isdigit():
@@ -583,14 +595,10 @@ def live_advice_view():
                 st.info("The season hasn't kicked off yet — switch to "
                         "**Build from scratch** above to build your GW1 team.")
                 return
-            advice = build_advice(int(team_id))      # upcoming GW, auto-detected
+            advice = build_advice(int(team_id), ft_override=int(chosen_ft) if override_ft else None)
             if not advice["ok"]:
                 st.warning(advice["error"])
             else:
-                cutoff = advice.get("form_gw")
-                form_label = f"GW{cutoff}" if cutoff else "previous-season seed"
-                st.caption(f"Advice: GW{advice['gw']} · Form data through: {form_label}. "
-                           "Unfinished or unchecked gameweeks excluded; availability is live.")
                 st.markdown(render_html(advice), unsafe_allow_html=True)
         except Exception as exc:  # noqa: BLE001
             import traceback

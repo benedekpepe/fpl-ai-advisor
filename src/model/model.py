@@ -44,7 +44,15 @@ def print_table(results: dict) -> None:
 
 def attach_opponent_strength(history: pd.DataFrame) -> pd.DataFrame:
     """Merge each row's opponent attack/defence strength (home/away aware)."""
-    strength = team_strength(sorted(history["season"].unique()))
+    bootstrap = history.attrs.get("bootstrap", {})
+    if bootstrap.get("teams"):
+        teams = pd.DataFrame(bootstrap["teams"])
+        cols = ["id", "strength_attack_home", "strength_attack_away",
+                "strength_defence_home", "strength_defence_away"]
+        strength = teams[cols].rename(columns={"id": "opponent_team"})
+        strength["season"] = history["season"].iloc[0]
+    else:
+        strength = team_strength(sorted(history["season"].unique()))
     df = history.merge(strength, on=["season", "opponent_team"], how="left")
     # player at home -> opponent is the away side, and vice versa
     df["opp_defence"] = df["strength_defence_away"].where(
@@ -61,7 +69,7 @@ def run(df: pd.DataFrame, test_season: str = TEST_SEASON) -> None:
     feats = build_feature_frame(df)
     cols = feature_columns() + EXTRA_FEATURES
 
-    train = feats[feats["season"] != test_season]
+    train = feats[feats["season"] < test_season]
     test = feats[feats["season"] == test_season]
     print(f"Train rows: {len(train):,}  |  Test rows ({test_season}): {len(test):,}")
 

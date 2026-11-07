@@ -8,7 +8,7 @@ A decision aid for [Fantasy Premier League](https://fantasy.premierleague.com/).
 Before the season starts it **builds your opening squad from scratch**; once
 gameweeks are played it advises the best **captain**, **transfer(s)** (weighing
 form against fixtures, including whether a −4 hit is worth taking) and **chip
-timing** — all driven by a points-prediction model and a constrained,
+timing** — all driven by a points-prediction model and a constrained
 squad optimiser, behind a Streamlit dashboard.
 
 > **Unofficial.** Not affiliated with, endorsed by, or connected to the Premier
@@ -16,18 +16,20 @@ squad optimiser, behind a Streamlit dashboard.
 > project.
 
 > **Status.** Runs live for the 2026-27 season (`FPL_DATA_SOURCE=live`): before
-> gameweek 1 it shows the **squad builder**; once a gameweek is played it
-> switches to **weekly advice** on your team — the app detects which from the
-> live gameweek. A finished-season **demo** (2025-26) is also available
+> gameweek 1 it shows the **squad builder**; once the first deadline passes it
+> switches to **weekly advice** on your team. Advice targets the earliest gameweek
+> whose deadline is still open, using only completed, FPL-checked rounds for form.
+> A finished-season **demo** (2025-26) is also available
 > (`FPL_DATA_SOURCE=csv`), where you can try the advisor on any team ID and a
 > past gameweek.
 
 ## Two modes
 
 - **Squad builder** — the optimal 15-man squad built from scratch: for the start
-  of the season (before any gameweek), or any time you want a from-scratch team
-  for a Wildcard or Free Hit. Optionally **pin** must-have players, tick **Bench
-  Boost** to build all 15 as strong GW1 picks, and see each pick's upcoming
+  of the season (before any gameweek) in the dashboard, and available via the CLI
+  later in the season. Weekly advice can also propose Wildcard or Free Hit squads.
+  Optionally **pin** must-have players, tick **Bench Boost** to build all 15 for
+  the immediate gameweek, and see each pick's upcoming
   fixtures. Every player shows both its **this-gameweek** projection and its
   **next-4-average**. When there's no current-season form yet, projections are
   **seeded from last season**.
@@ -38,30 +40,34 @@ squad optimiser, behind a Streamlit dashboard.
   games and scored against the actual upcoming fixtures, so every card shows both
   a **this-gameweek** projection and a **next-4 average** (starters and bench).
   In the opening weeks it also **dampens price** (so a pricey flop doesn't outrank
-  an in-form cheap player) and **blends in recent points-per-game** (so a strong
-  start actually counts); both fade out by ~GW6 back to the validated model. If
-  there is genuinely no current-season data yet, it falls back to the last-season
-  **seed** the builder uses.
+  an in-form cheap player) and **blends in season-to-date points-per-game**.
+  Price damping fades over the first four completed rounds; form blending peaks
+  early, then gradually falls to a 15% contribution. If the main forecast is
+  unavailable, the app labels its **seeded estimate**, using completed current-season
+  form where possible and previous-season form otherwise.
 
 ## What it does
 
 - **Squad builder** — the best legal 15 (2/5/5/3, valid formation, ≤ 3 per club,
   budget), with the starting XI, captain, optional pinned picks, and each
   player's upcoming fixtures shown on the pitch.
-- **Captain** — the highest projected scorer in your starting XI.
-- **Transfers** — the swap(s) that add the most projected points, with the hit
-  math made explicit (a move is only urged when the gain clears the −4).
+- **Captain** — the highest projected scorer in your starting XI, regardless of
+  position; the captain candidates and vice-captain follow the same projections.
+- **Transfers** — candidate swaps are compared on discounted next-four-gameweek
+  point totals, with each extra transfer's one-off −4 cost deducted. Known selling
+  prices are used; incomplete budget estimates are labelled.
 - **Best XI** — the optimal lineup and formation from your current 15, with each
   player's next-4 fixtures and difficulty (FPL's own FDR) on the card.
-- **Chip timing** — for each unused chip it finds its best week and only says
-  *play now* when this week **is** that peak. Free Hit and Wildcard are held for a
-  real swing — a blank/double gameweek or an injury crisis — measured as the
-  **excess** over your team's typical weekly shortfall, so a normal early-season
-  gap (which transfers fix) doesn't burn a chip.
-- **Availability-aware** — injured, suspended or loaned-out players are excluded
-  from selection, benched if you own them, become transfer-out candidates, and
-  are never recommended as buys; any injured or doubtful players in your own
-  squad are also flagged at the top of the weekly advice.
+- **Chip timing** — compares each unused chip within the available forecast
+  window and recommends a week near its projected peak when the gain clears a
+  threshold. Free Hit targets unusually large weekly shortfalls; Wildcard weighs
+  sustained improvement. On the expiry week, positive gains are considered even
+  below normal saving thresholds. Missing forecast data is shown explicitly.
+- **Availability-aware** — unavailable players are excluded as buys. Your own
+  unavailable players stay in the squad with zero projected points and can be
+  replaced or benched when alternatives permit; injury and doubt flags are shown
+  at the top of the advice. Lineup, transfer and chip forecasts use the same
+  availability snapshot.
 - **Expected-points selection** — the default objective maximises projected
   points without a hidden penalty for opposing players. Correlation changes risk,
   not the sum of expected points. The optional conflict penalty is disabled.
@@ -75,6 +81,9 @@ squad optimiser, behind a Streamlit dashboard.
 ![Dashboard — advice for a gameweek](docs/dashboard.png)
 ![Recommended transfers and chip plan](docs/chips.png)
 
+These show the core dashboard layout; the current build also includes forecast
+status, lineup explanations and the validation panel described below.
+
 ## How it works
 
 1. **Ingestion** — the public FPL API for live team state, prices, fixtures and
@@ -82,9 +91,10 @@ squad optimiser, behind a Streamlit dashboard.
    [vaastav/Fantasy-Premier-League](https://github.com/vaastav/Fantasy-Premier-League)
    dataset for per-gameweek history. Per-gameweek data is read through a
    configurable source (see *Data source* below).
-2. **Features** — leakage-free rolling form (each stat shifted one game so a game
-   never sees its own outcome), season-to-date form, minutes/starts trends,
-   home/away, and opponent attack/defence strength as fixture difficulty.
+2. **Features** — rolling and season-to-date form use only prior observations;
+   both matches in a double share pre-gameweek form. Unplayed future rows do not
+   consume the rolling window. Minutes/starts trends, home/away and opponent
+   attack/defence strengths provide context; live strengths come from the FPL API.
 3. **Model** — a two-stage expected-points model: `P(plays) × E[points | plays]`,
    each stage a LightGBM model. Splitting "will they play" from "how well" handles
    rotation better than a single regressor.
@@ -116,30 +126,30 @@ in-season live mode:
   ingestion scripts; used to train and backtest the model.
 - **`csv`** — the vaastav CSVs pulled directly at runtime, no database; this is
   what the finished-season demo uses (2025-26).
-- **`live`** — the live FPL API (2026-27): current-gameweek detection, player
-  availability and the squad builder; see `src/ingestion/live.py` and
+- **`live`** — the live FPL API (2026-27): open-deadline detection, completed-round
+  form, current availability, squad building and weekly advice; see `src/ingestion/live.py` and
   `src/model/preseason.py`.
 
 ## Model performance
 
-Out-of-time backtest: trained on past seasons, evaluated on an unseen one
-(2024-25). Lower MAE/RMSE is better; higher Spearman (rank correlation) is better.
+Chronological evaluations use separate training and later test seasons. Lower
+MAE/RMSE is better. These evaluate isolated comparison models, not the deployed
+artifact.
 
-| Model | MAE | RMSE | Spearman |
-| --- | --- | --- | --- |
-| **Two-stage + fixtures** (this project) | **1.050** | **2.069** | 0.696 |
-| Baseline: last-3-game form | 1.105 | 2.235 | 0.702 |
-| Reference: FPL's own expected points | 0.928 | 1.834 | 0.704 |
+| Training | Test | Model + form MAE | Simple form MAE | Model + form RMSE |
+| --- | --- | ---: | ---: | ---: |
+| 2023-24 | 2024-25 | 1.0582 | 1.1137 | 2.0892 |
+| 2024-25 | 2025-26 | 0.9932 | 1.0581 | 1.9705 |
 
-Read honestly: the model **beats the naive form baseline** on point error (MAE
-and RMSE), while **FPL's own xP remains the strongest** — unsurprising, as it has
-access to information this model doesn't (team news, confirmed lineups). Ranking
-ability is close across all three. The advisor's edge isn't in out-predicting
-FPL's internal model; it's in turning predictions into concrete, rules-aware
-squad / captain / transfer / chip decisions with the trade-offs shown.
+Reports: [first holdout](docs/model_validation.json),
+[second holdout](docs/model_validation_second.json). Eight variants were compared.
+No alternative consistently improves all principal error measures across both
+seasons, so production blending weights remain unchanged.
 
-Regenerate these numbers any time with `python -m src.model.model` (the
-single-stage baseline is `python -m src.model.baseline`).
+These replace the earlier pipeline benchmark. Historical opponent-strength
+snapshots may have later revisions, and archived injury/availability news is not
+replayed. They do not establish the accuracy of the current live model. Use the
+validation command below to reproduce the first comparison.
 
 ## Tech stack
 
@@ -161,9 +171,10 @@ fpl-ai-advisor/
 │   ├── data/               # loaders: history (db / csv), team strengths
 │   ├── db/                 # schema, connection, init
 │   ├── ingestion/          # FPL API client, historical loader, live mode
-│   ├── model/              # features, model, baseline, pre-season cold start
-│   ├── optim/              # stack-aware squad / XI / captain optimiser
-│   └── advisor/            # advice assembly + CLI
+│   ├── model/              # features, projections, validation, cold start
+│   ├── optim/              # squad / XI / captain optimiser
+│   ├── advisor/            # advice assembly + CLI
+│   └── ui/                 # forecast explanations and validation panels
 └── tests/                  # unit tests (no DB/model/network)
 ```
 
@@ -179,7 +190,7 @@ dependencies (step 2 below), then run either mode:
 # Finished-season demo (2025-26): enter a team ID + a past gameweek in the app
 FPL_DATA_SOURCE=csv streamlit run app.py
 
-# Live (2026-27): squad builder before GW1, weekly advice once a gameweek is played
+# Live (2026-27): squad builder before GW1, weekly advice after the first deadline
 FPL_DATA_SOURCE=live streamlit run app.py
 # Windows (PowerShell): $env:FPL_DATA_SOURCE="live"; streamlit run app.py
 ```
@@ -237,8 +248,10 @@ python -m src.ingestion.load_history 2022-23 2023-24 2024-25 2025-26
 python -m src.model.model
 ```
 
-This trains the two-stage model, prints the backtest table above, and saves the
-model to `models/`.
+This trains the two-stage model on seasons earlier than the configured test
+season, prints its evaluation and saves the artifact to `models/`. It replaces
+that local model file. The two comparison reports above are generated separately
+with `src.model.validate`, which does not replace the deployed artifact.
 
 ### 7. Run the app
 
@@ -263,11 +276,64 @@ python -m src.advisor.personal <team_id> <gameweek>
 # e.g. python -m src.advisor.personal 1234567 16
 ```
 
+## Forecast transparency and validation
+
+The pitch keeps the target-GW projection and weighted next-four-gameweek average.
+A double gameweek sums both match projections; a blank contributes zero to the
+run average. The ticker groups both opponents in one GW cell and marks blanks.
+Future unplayed rows do not consume the recent-form window, and both matches of
+a double use the same pre-gameweek form.
+
+**Your lineup, explained** compares every bench player with a legal single-player
+swap, before captain bonus. Expand a player to inspect observed minutes, recent
+starts, form, xGI and the model's per-match chance of any minutes. Observed average
+minutes are a guide, not a new calibrated starting/minutes model. Seed estimates
+use season-average signals and are labelled separately. The forecast banner
+shows when the main model has fallen back to a seeded forecast.
+
+Run the isolated chronological evaluation without replacing the live artifact:
+
+```sh
+python -m src.model.validate --cache-dir work/validation --output docs/model_validation.json
+```
+
+It trains on 2023-24 and tests on 2024-25, comparing the current recency blend,
+stronger/lighter blends, model-only, form-only, a minutes guard, recent-five form
+and sample-aware blending. A second report trains on 2024-25 and tests on 2025-26.
+The checked-in reports are exploratory: the minutes guard lowers MAE but increases RMSE, so production
+weights remain unchanged. Historical opponent-strength snapshots may contain later
+revisions; archived injury/availability news is not replayed. Confirm tuning on an
+additional untouched season before adopting it. The UI's Model check panel reports
+this separate evaluation, not measured performance of the current deployed artifact.
+
+
+## Decision audit
+
+- Captain and vice-captain can be any starting position; no hidden attacker-only filter.
+- Transfer gains are discounted next-four-GW **totals**, compared against a one-off
+  four-point hit. They remain a fixed-squad outlook, not a full dynamic transfer plan.
+- Known acquisition prices use FPL's half-profit selling-price rule. Public transfer
+  history and initial prices are used where available; incomplete budgets are labelled.
+- The original squad is restored for advice after a current Free Hit.
+- Wildcard/Free Hit preserve banked FTs without granting another; the GW16 AFCON
+  top-up applies only to 2025-26. Optional FT override is available in Team settings.
+- Chip comparisons use the manager's budget, blank-week zeroes, current availability
+  and seeded per-week forecasts when necessary. An expiring chip with positive gain
+  is considered even below the normal save-it-for-later threshold. No-data is not a hold verdict.
+- Live opponent strengths come from live bootstrap metadata. Historical form weights
+  use only rounds before the target, and genuine double-GW appearances are not clipped
+  to a round count.
+
+Rules checked against [official transfer guidance](https://www.premierleague.com/en/news/2174907/1000),
+[official chip guidance](https://www.premierleague.com/en/news/2174900) and
+[2026-27 changes](https://www.premierleague.com/en/news/4679873).
+
 ## Tests
 
-Unit tests cover the optimiser's constraints, the free-transfer estimate, and the
-chip-timing logic. They use synthetic inputs and need no database, model or
-network, so they run in seconds:
+Tests cover formation and budget constraints, captain choice, transfer hits and
+selling prices, chip expiry, Free Hit reversion, free-transfer rules, forecast
+cutoffs, double/blank weeks and escaped UI explanations. They use synthetic inputs
+and mocked models/APIs, so no database, trained artifact or network is required:
 
 ```bash
 pytest -q
@@ -282,11 +348,12 @@ The app runs on Streamlit Community Cloud with **no database**. One setting on
 the host decides what it is:
 
 - `FPL_DATA_SOURCE=live` — the live 2026-27 tool: squad builder before GW1,
-  weekly advice once gameweeks are played.
+  weekly advice after the first deadline.
 - `FPL_DATA_SOURCE=csv` — the finished-season demo (2025-26), reading the vaastav
   CSVs at runtime; anyone can try the advisor with a team ID and a past gameweek.
 
-An optional `app_password` secret can gate access to invited users.
+An optional `app_password` secret can gate access to invited users. Install from
+`requirements.txt`: PuLP is pinned to 3.3.2 because the optimiser uses its 3.x API.
 
 ## Notes and limitations
 
@@ -295,9 +362,13 @@ An optional `app_password` secret can gate access to invited users.
   seed also compresses the gap between elite and mid-price players, so premiums
   and captaincy calls are worth your own judgement (that's what `--pin` is for).
 - **Availability** comes from the live API (`status`, `chance_of_playing`), so it
-  is only applied in live mode, not in the finished-season demo.
+  is only applied in live mode, not in the finished-season demo. Current availability
+  is held constant across the forecast window; future recovery dates are not modelled.
 - It projects your **current** squad forward, so it can't foresee future squad
   improvements from transfers — early-window chip peaks can read a little eager.
+- **Public team state** has limits: selling prices and free transfers may be
+  estimated, and unfinalised changes in your account are not visible. Check the
+  displayed budget and optionally override the FT estimate in Team settings.
 - FPL has high inherent variance. The aim is systematically better-than-gut
   decisions with honest uncertainty, not a crystal ball.
 

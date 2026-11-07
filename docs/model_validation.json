@@ -1,0 +1,438 @@
+{
+  "train_season": "2023-24",
+  "test_season": "2024-25",
+  "created_utc": "2026-11-07T02:31:35.075469+00:00",
+  "train_rows": 28850,
+  "test_player_gameweeks": 26427,
+  "active_player_gameweeks": 9697,
+  "metrics": {
+    "current_blend": {
+      "mae": 1.0582,
+      "rmse": 2.0892,
+      "active_mae": 2.0355
+    },
+    "model_only": {
+      "mae": 1.0674,
+      "rmse": 2.1284,
+      "active_mae": 2.0422
+    },
+    "lighter_blend": {
+      "mae": 1.0608,
+      "rmse": 2.1053,
+      "active_mae": 2.0351
+    },
+    "stronger_blend": {
+      "mae": 1.0591,
+      "rmse": 2.0802,
+      "active_mae": 2.0426
+    },
+    "form3": {
+      "mae": 1.1137,
+      "rmse": 2.2629,
+      "active_mae": 2.3018
+    },
+    "minutes_guard": {
+      "mae": 1.0069,
+      "rmse": 2.1456,
+      "active_mae": 1.999
+    },
+    "recent5_blend": {
+      "mae": 1.0471,
+      "rmse": 2.1015,
+      "active_mae": 2.0561
+    },
+    "sample_aware": {
+      "mae": 1.0585,
+      "rmse": 2.0916,
+      "active_mae": 2.035
+    }
+  },
+  "gameweeks": {
+    "2": {
+      "current_blend": 1.0858,
+      "model_only": 1.1087,
+      "lighter_blend": 1.0932,
+      "stronger_blend": 1.0834,
+      "form3": 1.2321,
+      "minutes_guard": 1.0252,
+      "recent5_blend": 1.0858,
+      "sample_aware": 1.0975
+    },
+    "3": {
+      "current_blend": 0.9379,
+      "model_only": 0.945,
+      "lighter_blend": 0.9352,
+      "stronger_blend": 0.9505,
+      "form3": 1.0566,
+      "minutes_guard": 0.8776,
+      "recent5_blend": 0.9379,
+      "sample_aware": 0.9354
+    },
+    "4": {
+      "current_blend": 1.0918,
+      "model_only": 1.1114,
+      "lighter_blend": 1.0906,
+      "stronger_blend": 1.1084,
+      "form3": 1.1517,
+      "minutes_guard": 1.0712,
+      "recent5_blend": 1.0918,
+      "sample_aware": 1.0923
+    },
+    "5": {
+      "current_blend": 1.038,
+      "model_only": 1.076,
+      "lighter_blend": 1.0492,
+      "stronger_blend": 1.0413,
+      "form3": 1.0612,
+      "minutes_guard": 1.0007,
+      "recent5_blend": 1.038,
+      "sample_aware": 1.038
+    },
+    "6": {
+      "current_blend": 1.039,
+      "model_only": 1.0188,
+      "lighter_blend": 1.0226,
+      "stronger_blend": 1.0687,
+      "form3": 1.1266,
+      "minutes_guard": 0.9956,
+      "recent5_blend": 1.039,
+      "sample_aware": 1.0394
+    },
+    "7": {
+      "current_blend": 1.0941,
+      "model_only": 1.1091,
+      "lighter_blend": 1.0981,
+      "stronger_blend": 1.1042,
+      "form3": 1.1536,
+      "minutes_guard": 1.0467,
+      "recent5_blend": 1.095,
+      "sample_aware": 1.0942
+    },
+    "8": {
+      "current_blend": 1.0264,
+      "model_only": 1.0158,
+      "lighter_blend": 1.0171,
+      "stronger_blend": 1.0421,
+      "form3": 1.0876,
+      "minutes_guard": 0.9871,
+      "recent5_blend": 1.0066,
+      "sample_aware": 1.0265
+    },
+    "9": {
+      "current_blend": 0.9774,
+      "model_only": 0.9935,
+      "lighter_blend": 0.9818,
+      "stronger_blend": 0.9794,
+      "form3": 1.086,
+      "minutes_guard": 0.9352,
+      "recent5_blend": 0.9759,
+      "sample_aware": 0.9775
+    },
+    "10": {
+      "current_blend": 0.9497,
+      "model_only": 0.9549,
+      "lighter_blend": 0.9489,
+      "stronger_blend": 0.9578,
+      "form3": 1.0189,
+      "minutes_guard": 0.8978,
+      "recent5_blend": 0.9381,
+      "sample_aware": 0.9497
+    },
+    "11": {
+      "current_blend": 1.0221,
+      "model_only": 1.0188,
+      "lighter_blend": 1.0197,
+      "stronger_blend": 1.0267,
+      "form3": 1.1093,
+      "minutes_guard": 0.9797,
+      "recent5_blend": 1.0203,
+      "sample_aware": 1.0222
+    },
+    "12": {
+      "current_blend": 1.1644,
+      "model_only": 1.1734,
+      "lighter_blend": 1.1678,
+      "stronger_blend": 1.1624,
+      "form3": 1.2163,
+      "minutes_guard": 1.1272,
+      "recent5_blend": 1.1734,
+      "sample_aware": 1.1646
+    },
+    "13": {
+      "current_blend": 1.0408,
+      "model_only": 1.0514,
+      "lighter_blend": 1.0454,
+      "stronger_blend": 1.0374,
+      "form3": 1.0892,
+      "minutes_guard": 1.0047,
+      "recent5_blend": 1.0373,
+      "sample_aware": 1.0408
+    },
+    "14": {
+      "current_blend": 1.1279,
+      "model_only": 1.1252,
+      "lighter_blend": 1.126,
+      "stronger_blend": 1.1311,
+      "form3": 1.3213,
+      "minutes_guard": 1.0928,
+      "recent5_blend": 1.134,
+      "sample_aware": 1.128
+    },
+    "15": {
+      "current_blend": 1.0246,
+      "model_only": 1.0404,
+      "lighter_blend": 1.0319,
+      "stronger_blend": 1.0192,
+      "form3": 1.0841,
+      "minutes_guard": 0.9411,
+      "recent5_blend": 1.0274,
+      "sample_aware": 1.0246
+    },
+    "16": {
+      "current_blend": 1.0316,
+      "model_only": 1.0425,
+      "lighter_blend": 1.0363,
+      "stronger_blend": 1.0278,
+      "form3": 1.0515,
+      "minutes_guard": 0.9675,
+      "recent5_blend": 1.0205,
+      "sample_aware": 1.0316
+    },
+    "17": {
+      "current_blend": 1.1925,
+      "model_only": 1.2051,
+      "lighter_blend": 1.1975,
+      "stronger_blend": 1.1892,
+      "form3": 1.1931,
+      "minutes_guard": 1.1192,
+      "recent5_blend": 1.1733,
+      "sample_aware": 1.1925
+    },
+    "18": {
+      "current_blend": 1.0155,
+      "model_only": 1.0218,
+      "lighter_blend": 1.0183,
+      "stronger_blend": 1.0139,
+      "form3": 1.0359,
+      "minutes_guard": 0.9608,
+      "recent5_blend": 1.0059,
+      "sample_aware": 1.0155
+    },
+    "19": {
+      "current_blend": 1.0723,
+      "model_only": 1.0813,
+      "lighter_blend": 1.0764,
+      "stronger_blend": 1.0685,
+      "form3": 1.1338,
+      "minutes_guard": 1.018,
+      "recent5_blend": 1.0577,
+      "sample_aware": 1.0723
+    },
+    "20": {
+      "current_blend": 0.974,
+      "model_only": 0.9843,
+      "lighter_blend": 0.9791,
+      "stronger_blend": 0.9704,
+      "form3": 1.0254,
+      "minutes_guard": 0.8883,
+      "recent5_blend": 0.9478,
+      "sample_aware": 0.974
+    },
+    "21": {
+      "current_blend": 0.9635,
+      "model_only": 0.9624,
+      "lighter_blend": 0.9625,
+      "stronger_blend": 0.9648,
+      "form3": 1.0459,
+      "minutes_guard": 0.8826,
+      "recent5_blend": 0.9459,
+      "sample_aware": 0.9635
+    },
+    "22": {
+      "current_blend": 1.0861,
+      "model_only": 1.0895,
+      "lighter_blend": 1.0869,
+      "stronger_blend": 1.0863,
+      "form3": 1.1294,
+      "minutes_guard": 1.0118,
+      "recent5_blend": 1.081,
+      "sample_aware": 1.0861
+    },
+    "23": {
+      "current_blend": 0.9641,
+      "model_only": 0.9712,
+      "lighter_blend": 0.9666,
+      "stronger_blend": 0.9625,
+      "form3": 1.0389,
+      "minutes_guard": 0.8739,
+      "recent5_blend": 0.9554,
+      "sample_aware": 0.9642
+    },
+    "24": {
+      "current_blend": 1.2429,
+      "model_only": 1.2509,
+      "lighter_blend": 1.2444,
+      "stronger_blend": 1.242,
+      "form3": 1.4134,
+      "minutes_guard": 1.1701,
+      "recent5_blend": 1.2237,
+      "sample_aware": 1.2437
+    },
+    "25": {
+      "current_blend": 1.1481,
+      "model_only": 1.1631,
+      "lighter_blend": 1.1535,
+      "stronger_blend": 1.1461,
+      "form3": 1.2019,
+      "minutes_guard": 1.1114,
+      "recent5_blend": 1.1463,
+      "sample_aware": 1.1482
+    },
+    "26": {
+      "current_blend": 1.1895,
+      "model_only": 1.199,
+      "lighter_blend": 1.1938,
+      "stronger_blend": 1.187,
+      "form3": 1.236,
+      "minutes_guard": 1.1552,
+      "recent5_blend": 1.179,
+      "sample_aware": 1.1904
+    },
+    "27": {
+      "current_blend": 1.0011,
+      "model_only": 1.0054,
+      "lighter_blend": 1.0016,
+      "stronger_blend": 1.0035,
+      "form3": 1.0951,
+      "minutes_guard": 0.9637,
+      "recent5_blend": 0.9783,
+      "sample_aware": 1.0014
+    },
+    "28": {
+      "current_blend": 0.931,
+      "model_only": 0.9427,
+      "lighter_blend": 0.9355,
+      "stronger_blend": 0.9274,
+      "form3": 1.0283,
+      "minutes_guard": 0.8948,
+      "recent5_blend": 0.9076,
+      "sample_aware": 0.9311
+    },
+    "29": {
+      "current_blend": 0.98,
+      "model_only": 0.9942,
+      "lighter_blend": 0.9864,
+      "stronger_blend": 0.9752,
+      "form3": 0.9948,
+      "minutes_guard": 0.937,
+      "recent5_blend": 0.9428,
+      "sample_aware": 0.9801
+    },
+    "30": {
+      "current_blend": 1.0565,
+      "model_only": 1.0695,
+      "lighter_blend": 1.0616,
+      "stronger_blend": 1.0539,
+      "form3": 1.0853,
+      "minutes_guard": 1.0207,
+      "recent5_blend": 1.0433,
+      "sample_aware": 1.0565
+    },
+    "31": {
+      "current_blend": 1.0361,
+      "model_only": 1.0482,
+      "lighter_blend": 1.0411,
+      "stronger_blend": 1.0329,
+      "form3": 1.0641,
+      "minutes_guard": 1.008,
+      "recent5_blend": 1.0168,
+      "sample_aware": 1.0361
+    },
+    "32": {
+      "current_blend": 1.1613,
+      "model_only": 1.1648,
+      "lighter_blend": 1.1611,
+      "stronger_blend": 1.1647,
+      "form3": 1.1511,
+      "minutes_guard": 1.1022,
+      "recent5_blend": 1.1471,
+      "sample_aware": 1.1613
+    },
+    "33": {
+      "current_blend": 1.188,
+      "model_only": 1.2054,
+      "lighter_blend": 1.1952,
+      "stronger_blend": 1.1822,
+      "form3": 1.2157,
+      "minutes_guard": 1.134,
+      "recent5_blend": 1.1884,
+      "sample_aware": 1.1879
+    },
+    "34": {
+      "current_blend": 1.0154,
+      "model_only": 1.0306,
+      "lighter_blend": 1.0221,
+      "stronger_blend": 1.0106,
+      "form3": 0.9834,
+      "minutes_guard": 0.9644,
+      "recent5_blend": 0.9912,
+      "sample_aware": 1.0154
+    },
+    "35": {
+      "current_blend": 0.9885,
+      "model_only": 0.9992,
+      "lighter_blend": 0.9929,
+      "stronger_blend": 0.9858,
+      "form3": 1.0388,
+      "minutes_guard": 0.9278,
+      "recent5_blend": 0.9834,
+      "sample_aware": 0.9885
+    },
+    "36": {
+      "current_blend": 1.106,
+      "model_only": 1.1217,
+      "lighter_blend": 1.1131,
+      "stronger_blend": 1.0996,
+      "form3": 1.0691,
+      "minutes_guard": 1.0493,
+      "recent5_blend": 1.0927,
+      "sample_aware": 1.106
+    },
+    "37": {
+      "current_blend": 1.0653,
+      "model_only": 1.0675,
+      "lighter_blend": 1.0652,
+      "stronger_blend": 1.0668,
+      "form3": 1.082,
+      "minutes_guard": 1.0185,
+      "recent5_blend": 1.0286,
+      "sample_aware": 1.0653
+    },
+    "38": {
+      "current_blend": 1.059,
+      "model_only": 1.068,
+      "lighter_blend": 1.0629,
+      "stronger_blend": 1.0567,
+      "form3": 1.0745,
+      "minutes_guard": 1.0249,
+      "recent5_blend": 1.0338,
+      "sample_aware": 1.059
+    }
+  },
+  "minutes": {
+    "guide_mae": 13.1776,
+    "play_brier": 0.1
+  },
+  "method": "Train on an earlier season; evaluate later season with only prior observed form. All matches in a double share pre-GW features. Metrics aggregate points per player/gameweek. Active cohort: prior average minutes >=30.",
+  "limitations": [
+    "Historical opponent strengths are season-level snapshots and may reflect later revisions.",
+    "Historical injury news and deadline-time availability snapshots are not replayed.",
+    "Evaluation model is separate from the deployed artifact; one holdout season is insufficient for selecting new production weights.",
+    "Metrics evaluate points per player/gameweek, not transfer hits or whole-season manager rank."
+  ],
+  "decision": "Exploratory comparison only. Keep deployed weights unchanged; confirm on another untouched season before tuning.",
+  "sources": [
+    "https://raw.githubusercontent.com/vaastav/Fantasy-Premier-League/master/data/2023-24/gws/merged_gw.csv",
+    "https://raw.githubusercontent.com/vaastav/Fantasy-Premier-League/master/data/2024-25/gws/merged_gw.csv"
+  ]
+}

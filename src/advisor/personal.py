@@ -13,6 +13,7 @@ Run:  python -m src.advisor.personal 3136812 15
       python -m src.advisor.personal 3136812 15 --ft 2    # override the FT estimate
 """
 import sys
+import logging
 from functools import lru_cache
 
 import joblib
@@ -27,10 +28,13 @@ from src.optim.optimizer import optimize_squad, conflict_dock
 from src.data.teams import teams_meta
 from src.config import (
     ACTIVE_SEASON as SEASON, FPL_API as FPL, MODEL_PATH, CONFLICT_PENALTY,
-    DATA_SOURCE, BENCH_WEIGHT, FIXTURE_WEIGHTS,
+    DATA_SOURCE, BENCH_WEIGHT, FIXTURE_WEIGHTS, DEFAULT_BUDGET,
     SQUAD, XI_MIN, XI_MAX, MAX_PER_CLUB, HIT, MAX_FT, BANK_THRESHOLD,
     POSITION_ORDER as ORDER, CHIP_LABEL, HALF_DEADLINE, HALF_LABEL,
 )
+
+
+LOGGER = logging.getLogger(__name__)
 
 
 # --------------------------- predictions ----------------------------------
@@ -55,48 +59,26 @@ def _predict_from_history(season: str, raw: pd.DataFrame) -> pd.DataFrame:
     if feats.empty:                       # early season: no current-season rows yet
         return pd.DataFrame(columns=["gw", "id", "name", "position", "team",
                                      "price", "pred", "actual"])
-    # Games actually played this season (a scalar). Upcoming (unplayed) rows carry
-    # NaN stats; a plain cumcount counts them and inflates games_played for later
-    # future weeks, which would make the early-season adjustments fade across the
-    # horizon and wrongly inflate the Free-Hit gap in the nearest week. So the
-    # form-related adjustments key off this scalar instead — uniform across weeks.
-    try:
-        rs = raw[raw["season"] == season] if "season" in raw.columns else raw
-        n_played = int(rs.loc[rs["minutes"].notna(), "gw"].nunique())
-    except Exception:  # noqa: BLE001
-        n_played = int(feats["games_played"].min()) if len(feats) else 0
-    n_played = max(n_played, 0)
-
-    X = feats[cols].copy()
-    if "games_played" in X.columns:        # don't let unplayed future rows inflate it
-        X["games_played"] = X["games_played"].clip(upper=max(n_played, 1))
-    # Early-season value dampening. With little form the model leans on price so
-    # hard a pricey flop outranks an in-form cheap player. Shrink value toward the
-    # per-position median until ~4 games are in, then use the real price (what the
-    # model was validated on — full-season data is unaffected).
-    if "value" in X.columns:
-        shrink = min(n_played / 4.0, 1.0)
-        med = feats.groupby("position")["value"].transform("median").fillna(
-            feats["value"].median())
-        X["value"] = (med + (feats["value"] - med) * shrink).to_numpy()
-    feats["pred"] = clf.predict_proba(X)[:, 1] * reg.predict(X)
-    feats["pred_model"] = feats["pred"]        # unblended (reliable) — for captaincy
-    # Early-season recency blend. The model regresses recent form hard toward its
-    # priors (price, position, xG), so actual output — goals, assists, points, and
-    # who's in form against whom — is under-weighted early. Blend in the player's
-    # points-per-game, weighted by how many games back it: light after 1 game (a
-    # single haul can be a fluke), heavier once 2-3 games confirm the form. Fades
-    # back toward the validated model as the season's own sample grows.
-    if "cum_ppg" in feats.columns and n_played >= 1:
-        fw = min(0.15 * n_played, 0.45)
-        if n_played > 6:                   # enough live sample now — let the model lead
-            fw = max(0.15, 0.45 - (n_played - 6) * 0.05)
-        feats["pred"] = (1 - fw) * feats["pred"] + fw * feats["cum_ppg"].fillna(0)
+    rs = raw[raw["season"] == season] if "season" in raw.columns else raw
+    from src.model.projections import score_features
+    observed_gws = set(rs.loc[rs["minutes"].notna(), "gw"].unique())
+    scored = []
+    for target, group in feats.groupby("gw"):
+        group = group.copy()
+        played_before = sum(g < target for g in observed_gws)
+        group["pred"], group["pred_model"], group["p_play"], weight = score_features(
+            group, bundle, played_before)
+        group["form_weight"] = weight
+        scored.append(group)
+    feats = pd.concat(scored)
     return feats.groupby(["gw", "element"]).agg(
         name=("name", "first"), position=("position", "first"),
         team=("team", "first"), price=("value", "first"),
         pred=("pred", "sum"), pred_model=("pred_model", "sum"),
         xgi=("roll_expected_goal_involvements_5", "first"),
+        p_play=("p_play", "mean"), recent_minutes=("roll_minutes_5", "first"),
+        recent_starts=("starts_rate_5", "first"), recent_form=("roll_total_points_3", "first"),
+        form_weight=("form_weight", "first"), fixture_count=("fixture", "nunique"),
         actual=("total_points", "sum"),
     ).reset_index().rename(columns={"element": "id"})
 
@@ -113,12 +95,48 @@ def get_picks(team_id, gw):
     return _get(f"entry/{team_id}/event/{gw}/picks/")
 
 
+def get_transfers(team_id):
+    return _get(f"entry/{team_id}/transfers/")
+
+
+def selling_prices(picks, pool, transfers, history, bootstrap, target_gw):
+    """Public acquisition prices where known; explicitly flag incomplete budgets."""
+    market = pool.set_index("id")["price"].to_dict()
+    freehit_gws = {c["event"] for c in history.get("chips", []) if c["name"] == "freehit"}
+    bought = {}
+    for move in sorted(transfers or [], key=lambda m: m.get("time", "")):
+        if move.get("event", 0) >= target_gw or move.get("event") in freehit_gws:
+            continue
+        bought[move["element_in"]] = move.get("element_in_cost")
+    initial = {e["id"]: e["now_cost"]-e.get("cost_change_start", 0)
+               for e in bootstrap.get("elements", []) if "cost_change_start" in e}
+    started = min((h["event"] for h in history.get("current", [])), default=0)
+    result, unknown = {}, []
+    for pick in picks.get("picks", []):
+        pid = pick["element"]
+        if pid not in market:
+            continue
+        if pick.get("selling_price") is not None:
+            result[pid] = int(pick["selling_price"])
+            continue
+        purchase = pick.get("purchase_price", bought.get(pid))
+        if purchase is None and pid not in bought and transfers is not None and started == 1:
+            purchase = initial.get(pid)
+        now = int(market[pid])
+        if purchase is None:
+            result[pid] = now
+            unknown.append(pid)
+        else:
+            result[pid] = now if now <= purchase else int(purchase + (now-purchase)//2)
+    return result, unknown
+
+
 def get_history(team_id):
     return _get(f"entry/{team_id}/history/")
 
 
 # --------------------------- context from history -------------------------
-def estimate_free_transfers(history: dict, target_gw: int) -> int:
+def estimate_free_transfers(history: dict, target_gw: int, season: str = SEASON) -> int:
     """Reconstruct available free transfers entering target_gw (an estimate).
 
     GW1 is unlimited (a fresh squad), so nothing rolls over from it — entering
@@ -126,20 +144,16 @@ def estimate_free_transfers(history: dict, target_gw: int) -> int:
     """
     made = {c["event"]: c.get("event_transfers", 0) for c in history.get("current", [])}
     chip = {c["event"]: c["name"] for c in history.get("chips", [])}
-    if target_gw <= 2:
-        return 1                                  # GW1 unlimited → GW2 has 1 FT
-    ft = 1                                         # entering GW2
-    for g in range(2, target_gw):                 # accrue rollovers from GW2 on
-        c = chip.get(g)
-        if c == "wildcard":
-            ft = 1
-        elif c == "freehit":
-            pass  # free hit ignores transfers and the FT count
-        else:
-            ft = max(0, ft - made.get(g, 0))
-        ft = min(MAX_FT, ft + 1)
-        if g + 1 == 16:           # AFCON: everyone gets 5 in GW16
-            ft = 5
+    first_gw = min(made, default=1)
+    if target_gw <= first_gw + 1:
+        return 1
+    ft = 1
+    for g in range(first_gw + 1, target_gw):
+        # Transfer chips preserve the banked count; they do not earn another FT.
+        if chip.get(g) not in ("wildcard", "freehit"):
+            ft = min(MAX_FT, max(0, ft - made.get(g, 0)) + 1)
+        if season == "2025-26" and g + 1 == 16:
+            ft = MAX_FT  # One-off AFCON top-up, not a permanent FPL rule.
     return ft
 
 
@@ -151,6 +165,11 @@ def chips_available(history: dict, target_gw: int):
     used = {c["name"] for c in history.get("chips", [])
             if lo <= c["event"] <= min(hi, target_gw)}
     available = [c for c in CHIP_LABEL if c not in used]
+    if target_gw == 1:
+        available = [c for c in available if c not in ("wildcard", "freehit")]
+    if any(c.get("name") == "freehit" and c.get("event") == target_gw - 1
+           for c in history.get("chips", [])):
+        available = [c for c in available if c != "freehit"]
     return available, HALF_DEADLINE[half], half
 
 
@@ -170,7 +189,7 @@ def chips_used(history: dict, target_gw: int) -> dict:
 CHIP_MIN_VALUE = {"freehit": 8.0, "wildcard": 18.0, "bboost": 16.0, "3xc": 8.0}
 
 
-def recommend_chip(timing: dict, gw: int):
+def recommend_chip(timing: dict, gw: int, deadline_gw: int = None):
     """The chip to play THIS gameweek, or None.
 
     `timing` maps each chip to a value-sorted ``[(gameweek, value), ...]`` over
@@ -192,7 +211,8 @@ def recommend_chip(timing: dict, gw: int):
         margin = max(1.0, 0.1 * best_val)
         if this_val < best_val - margin:
             continue                       # a clearly better week is still ahead
-        if this_val < CHIP_MIN_VALUE.get(chip, 0.0):
+        minimum = 0.0 if deadline_gw == gw else CHIP_MIN_VALUE.get(chip, 0.0)
+        if this_val <= 0 or this_val < minimum:
             continue                       # not a big enough swing to burn the chip
         candidates[chip] = this_val
     return max(candidates, key=candidates.get) if candidates else None
@@ -226,6 +246,28 @@ def optimize_xi(squad: pd.DataFrame, conflict_penalty: float = 0.0):
     return pulp.value(prob.objective), s
 
 
+def selection_explanations(squad):
+    """Compare each benched player with the best legal one-player lineup swap."""
+    starters = squad[squad["starting"] == 1]
+    counts = starters["position"].value_counts().to_dict()
+    comparisons = []
+    for _, bench in squad[squad["starting"] == 0].iterrows():
+        legal = []
+        for _, starter in starters.iterrows():
+            proposed = counts.copy()
+            proposed[starter["position"]] -= 1
+            proposed[bench["position"]] = proposed.get(bench["position"], 0) + 1
+            if all(XI_MIN[p] <= proposed.get(p, 0) <= XI_MAX[p] for p in XI_MIN):
+                legal.append(starter)
+        if legal:
+            out = min(legal, key=lambda r: r["pred"])
+            comparisons.append({"bench": bench["name"], "starter": out["name"],
+                                "gap": round(float(out["pred"] - bench["pred"]), 2),
+                                "bench_pred": round(float(bench["pred"]), 2),
+                                "starter_pred": round(float(out["pred"]), 2)})
+    return sorted(comparisons, key=lambda r: r["gap"])
+
+
 def _prune_pool(pool: pd.DataFrame, keep_pred=50, keep_cheap=20) -> pd.DataFrame:
     """Trim the candidate pool to players that can plausibly make the optimal squad:
     the top scorers plus the cheapest budget-enablers in each position. Optimising
@@ -247,9 +289,8 @@ def best_squad_value(pool: pd.DataFrame, budget=1000) -> float:
 
 def _blend_pred(preds_all: pd.DataFrame, gw: int) -> dict:
     """{element_id: weighted-average projection over the next FIXTURE_WEIGHTS
-    gameweeks from ``gw``}. Used so transfer decisions weigh a player's whole
-    upcoming run, not just the immediate gameweek. Players are averaged only over
-    the gameweeks they actually have a fixture for."""
+    gameweeks from ``gw``}. Blanks contribute zero, doubles sum their fixtures.
+    Used so transfer decisions weigh a player's whole upcoming run."""
     frames = []
     for k, g in enumerate(range(gw, gw + len(FIXTURE_WEIGHTS))):
         f = preds_all[preds_all["gw"] == g][["id", "pred"]]
@@ -260,7 +301,9 @@ def _blend_pred(preds_all: pd.DataFrame, gw: int) -> dict:
     allf = pd.concat(frames)
     allf["wp"] = allf["pred"] * allf["w"]
     agg = allf.groupby("id").agg(wp=("wp", "sum"), w=("w", "sum"))
-    return (agg["wp"] / agg["w"]).to_dict()
+    horizon = sum(FIXTURE_WEIGHTS[k] for k in range(len(FIXTURE_WEIGHTS))
+                  if gw + k <= 38)
+    return (agg["wp"] / horizon).to_dict()
 
 
 def plan_transfers(current_ids, pool, bank, ft):
@@ -268,8 +311,8 @@ def plan_transfers(current_ids, pool, bank, ft):
     idx = list(p.index)
     cur = set(current_ids)
     owned = {i: (p.loc[i, "id"] in cur) for i in idx}
-    pred, price, pos = p["pred"].to_dict(), p["price"].to_dict(), p["position"].to_dict()
-    cur_val = p[p["id"].isin(cur)]["price"].sum()
+    pred, price, pos = p["pred"].to_dict(), p.get("budget_price", p["price"]).to_dict(), p["position"].to_dict()
+    cur_val = sum(price[i] for i in idx if owned[i])
     prob = pulp.LpProblem("plan", pulp.LpMaximize)
     x = pulp.LpVariable.dicts("sq", idx, cat="Binary")
     y = pulp.LpVariable.dicts("xi", idx, cat="Binary")
@@ -296,6 +339,8 @@ def plan_transfers(current_ids, pool, bank, ft):
         prob += pulp.lpSum(x[i] for i in mem) <= MAX_PER_CLUB
     prob += hits >= pulp.lpSum(x[i] for i in idx if not owned[i]) - ft
     prob.solve(pulp.PULP_CBC_CMD(msg=0))
+    if pulp.LpStatus[prob.status] != "Optimal":
+        raise RuntimeError(f"Solver status: {pulp.LpStatus[prob.status]}")
     p["starting"] = [int(round(y[i].value())) for i in idx]
     p["captain"] = [int(round(c[i].value())) for i in idx]
     new = p[[int(round(x[i].value())) == 1 for i in idx]].copy()
@@ -310,8 +355,8 @@ def plan_exact(current_ids, pool, bank, k):
     idx = list(p.index)
     cur = set(current_ids)
     owned = {i: (p.loc[i, "id"] in cur) for i in idx}
-    pred, price, pos = p["pred"].to_dict(), p["price"].to_dict(), p["position"].to_dict()
-    cur_val = p[p["id"].isin(cur)]["price"].sum()
+    pred, price, pos = p["pred"].to_dict(), p.get("budget_price", p["price"]).to_dict(), p["position"].to_dict()
+    cur_val = sum(price[i] for i in idx if owned[i])
     prob = pulp.LpProblem("plan_exact", pulp.LpMaximize)
     x = pulp.LpVariable.dicts("sq", idx, cat="Binary")
     y = pulp.LpVariable.dicts("xi", idx, cat="Binary")
@@ -348,7 +393,7 @@ def plan_exact(current_ids, pool, bank, k):
 
 
 # --------------------------- chip timing ----------------------------------
-def chip_timing(squad_ids, preds_all, current_gw, available, deadline_gw):
+def chip_timing(squad_ids, preds_all, current_gw, available, deadline_gw, budget=DEFAULT_BUDGET):
     """For each available chip, its value in each gameweek of the remaining window.
 
     Free Hit  = one-week gain (your XI vs the best achievable that single week).
@@ -356,7 +401,21 @@ def chip_timing(squad_ids, preds_all, current_gw, available, deadline_gw):
                 remaining half, then value it week-by-week against your current
                 squad — i.e. how the changes play out over the long run.
     """
-    gws = sorted(g for g in preds_all["gw"].unique() if current_gw <= g <= deadline_gw)
+    future = preds_all[preds_all["gw"].between(current_gw, deadline_gw)].copy()
+    if future.empty:
+        return {}, []
+    # Fill known blank weeks with zero rather than dropping owned players or weeks.
+    template = future.sort_values("gw").drop_duplicates("id").set_index("id")
+    gws = list(range(current_gw, min(deadline_gw, int(future["gw"].max())) + 1))
+    completed = []
+    for g in gws:
+        week = future[future["gw"] == g].set_index("id").reindex(template.index)
+        for col in [c for c in ("name", "position", "team", "price", "budget_price") if c in template]:
+            week[col] = week[col].fillna(template[col])
+        week["pred"] = week["pred"].fillna(0.0)
+        week["gw"] = g
+        completed.append(week.reset_index())
+    preds_all = pd.concat(completed, ignore_index=True)
     cap_pred, bench_sum, your_xi, opt_xi = {}, {}, {}, {}
     for g in gws:
         sq = preds_all[(preds_all["gw"] == g) & (preds_all["id"].isin(squad_ids))]
@@ -367,14 +426,14 @@ def chip_timing(squad_ids, preds_all, current_gw, available, deadline_gw):
         cap_pred[g] = start["pred"].max()
         bench_sum[g] = bench["pred"].sum()
         your_xi[g] = start["pred"].sum() + start[start["captain"] == 1]["pred"].sum()
-        opt_xi[g] = best_squad_value(preds_all[preds_all["gw"] == g])
+        opt_xi[g] = best_squad_value(preds_all[preds_all["gw"] == g], budget=budget)
     valid = sorted(your_xi)
     # Your team's typical weekly shortfall vs the best achievable XI. Free Hit is
     # only worth it when a SPECIFIC week is unusually bad for you (a blank/double
     # gameweek), i.e. the gap exceeds this baseline — not when you're generally
     # sub-optimal, which is a job for transfers or a Wildcard.
     _fh_gaps = sorted(max(0.0, opt_xi[g] - your_xi[g]) for g in valid)
-    baseline_gap = _fh_gaps[len(_fh_gaps) // 2] if _fh_gaps else 0.0   # median
+    baseline_gap = _fh_gaps[len(_fh_gaps) // 2] if len(_fh_gaps) > 1 else 0.0   # median
 
     # Wildcard: one fixed squad optimised over the whole remaining window,
     # then valued week-by-week (re-picking the XI each week from those 15).
@@ -383,7 +442,9 @@ def chip_timing(squad_ids, preds_all, current_gw, available, deadline_gw):
         horizon = preds_all[preds_all["gw"].isin(valid)].groupby("id").agg(
             pred=("pred", "sum"), name=("name", "first"), position=("position", "first"),
             team=("team", "first"), price=("price", "last")).reset_index()
-        wc_ids = set(optimize_squad(horizon)["id"])
+        if "budget_price" in template:
+            horizon["budget_price"] = horizon["id"].map(template["budget_price"])
+        wc_ids = set(optimize_squad(horizon, budget=budget)["id"])
         for h in valid:
             sq = preds_all[(preds_all["gw"] == h) & (preds_all["id"].isin(wc_ids))]
             wc_weekly[h] = (optimize_xi(sq)[0] if len(sq) >= 11
@@ -425,6 +486,11 @@ def _xi_rows(df, fxmap=None):
                "pred": round(float(r["pred"]), 2),
                "actual": (None if pd.isna(r.get("actual")) else int(round(r["actual"]))),
                "captain": bool(r["captain"]), "vice": False, "role": role}
+        row["signal_basis"] = r.get("signal_basis", "recent")
+        for key in ("recent_minutes", "recent_starts", "recent_form", "xgi", "p_play", "fixture_count", "form_weight"):
+            val = r.get(key)
+            if val is not None and pd.notna(val):
+                row[key] = round(float(val), 3)
         if "pred_blend" in df.columns and pd.notna(r.get("pred_blend")):
             row["pred_run"] = round(float(r["pred_blend"]), 2)   # next-few-GW average
         if fxmap is not None:
@@ -445,14 +511,8 @@ def _xi_rows(df, fxmap=None):
 
 
 def _captain_pool(sq):
-    """Starting attackers (MID/FWD) ranked by projected points — the pool the
-    captain is chosen from. Captaincy is about ceiling, which keepers and
-    defenders rarely have, so the armband stays among attackers; falls back to
-    all starters if there are somehow none."""
-    xs = sq[sq["starting"] == 1]
-    att = xs[xs["position"].isin(["MID", "FWD"])]
-    pk = att if len(att) else xs
-    return pk, "pred"
+    """Captain the highest expected scorer, regardless of position."""
+    return sq[sq["starting"] == 1], "pred"
 
 
 def _captain_id(sq):
@@ -538,9 +598,11 @@ def build_advice(team_id, gw=None, ft_override=None, picks_gw=None):
     if picks_gw is None:
         picks_gw = gw                                  # demo: picks come from the same GW
     picks = get_picks(team_id, picks_gw)
+    history = get_history(team_id)
+    if DATA_SOURCE == "live" and picks.get("active_chip") == "freehit" and picks_gw > 1:
+        picks = get_picks(team_id, picks_gw-1)  # The temporary FH squad reverts next GW.
     ids = [p["element"] for p in picks["picks"]]
     bank = picks.get("entry_history", {}).get("bank", 0)
-    history = get_history(team_id)
 
     ft = ft_override if ft_override is not None else estimate_free_transfers(history, gw)
     available, deadline_gw, half = chips_available(history, gw)
@@ -548,6 +610,8 @@ def build_advice(team_id, gw=None, ft_override=None, picks_gw=None):
 
     live_raw = None
     form_gw = None
+    projection_source = "season_model"
+    projection_reason = None
     try:
         if DATA_SOURCE == "live":
             live_raw = load_history()
@@ -556,7 +620,9 @@ def build_advice(team_id, gw=None, ft_override=None, picks_gw=None):
         else:
             preds_all = predict_all(SEASON)
         pool = preds_all[preds_all["gw"] == gw].copy()
-    except Exception:  # noqa: BLE001 — thin/odd early-season data → use the seed
+    except Exception:  # noqa: BLE001 — fallback is disclosed in the UI
+        LOGGER.exception("Main projection failed for target GW%s; using a disclosed seed", gw)
+        projection_reason = "The main forecast could not be completed. Seeded estimates are shown."
         preds_all = pd.DataFrame(columns=["gw", "id", "pred"])
         pool = pd.DataFrame()
     fxmap = {} if DATA_SOURCE == "live" else team_fixtures(SEASON, gw, 4)
@@ -574,15 +640,21 @@ def build_advice(team_id, gw=None, ft_override=None, picks_gw=None):
         except Exception:  # noqa: BLE001
             fxmap = {}
 
-    if pool.empty:
+    if pool.empty or (DATA_SOURCE == "live" and not set(ids).issubset(set(pool["id"]))):
         # The upcoming gameweek isn't in the played history yet, so forward-predict
         # it: prefer THIS season's form (from games played so far), falling back to
         # last season's seed only until a gameweek has actually been played.
         from src.model.preseason import preseason_predictions, current_season_seed
         cs = current_season_seed(history=live_raw)
+        projection_source = "current_form_seed" if len(cs) else "previous_season_seed"
+        if projection_reason is None:
+            projection_reason = "A full model forecast is not available for this gameweek."
         form_gw = cs.attrs.get("form_gw", form_gw) if len(cs) else 0
         seed = preseason_predictions(apply_availability=False,
                                      seed_override=cs if len(cs) else None, gw=gw)
+        seeded_horizon = seed.attrs.get("weekly_predictions")
+        if seeded_horizon is not None:
+            preds_all = pd.DataFrame(seeded_horizon)
         if not len(seed):
             return {"ok": False, "team_id": team_id, "gw": gw, "season": SEASON,
                     "error": "Not enough data yet to advise — try again once the "
@@ -609,15 +681,32 @@ def build_advice(team_id, gw=None, ft_override=None, picks_gw=None):
     # unavailable players you don't own (your own stay so they can be replaced).
     if DATA_SOURCE == "live":
         from src.ingestion.live import availability
-        mult = pool["id"].map(availability()).fillna(1.0)
+        live_availability = availability()
+        mult = pool["id"].map(live_availability).fillna(1.0)
+        if not preds_all.empty:
+            preds_all = preds_all.copy()
+            factors = preds_all["id"].map(live_availability).fillna(1.0)
+            preds_all["pred"] = preds_all["pred"] * factors
+            preds_all = preds_all[(factors > 0) | preds_all["id"].isin(ids)]
         pool["pred"] = pool["pred"] * mult
+        if "p_play" in pool:
+            pool["p_play"] = pool["p_play"] * mult
         pool["pred_blend"] = pool["pred_blend"] * mult
         pool = pool[(mult > 0) | pool["id"].isin(ids)]
 
+    if DATA_SOURCE == "live" and live_raw is not None and not live_raw.empty:
+        missing_ids = set(ids) - set(pool["id"])
+        missing = live_raw[live_raw["element"].isin(missing_ids)].drop_duplicates("element")
+        if len(missing):
+            missing = missing.rename(columns={"element": "id", "value": "price"})
+            missing = missing[[c for c in ("id", "name", "position", "team", "price") if c in missing]]
+            missing = missing.assign(pred=0.0, pred_blend=0.0, gw=gw, fixture_count=0)
+            pool = pd.concat([pool, missing], ignore_index=True)
+
     squad = pool[pool["id"].isin(ids)].copy()
-    if len(squad) < 11:
+    if len(squad) != 15 or squad["position"].value_counts().to_dict() != SQUAD:
         return {"ok": False, "team_id": team_id, "gw": gw, "season": SEASON,
-                "error": "Not enough player data to advise this gameweek."}
+                "error": "A complete, valid 15-player squad is required. Some player data is unavailable; please retry."}
 
     # This gameweek's best XI + captain — what to actually field and captain now.
     _, base_xi = optimize_xi(squad, conflict_penalty=CONFLICT_PENALTY)
@@ -626,7 +715,21 @@ def build_advice(team_id, gw=None, ft_override=None, picks_gw=None):
     nm = pool.set_index("id")["name"].to_dict()
     pos = pool.set_index("id")["position"].to_dict()
     prc = pool.set_index("id")["price"].to_dict()
-    total_money = float(squad["price"].sum()) + bank   # squad value + bank, in tenths
+    sell = prc.copy()
+    unknown_prices = []
+    if DATA_SOURCE == "live":
+        try:
+            transfer_history = get_transfers(team_id)
+        except Exception:
+            transfer_history = None
+        boot = live_raw.attrs.get("bootstrap", {}) if live_raw is not None else {}
+        sell, unknown_prices = selling_prices(picks, pool, transfer_history, history, boot, gw)
+    pool["budget_price"] = pool.apply(lambda r: sell.get(r["id"], r["price"]), axis=1)
+    total_money = sum(sell[i] for i in ids) + bank
+    if not preds_all.empty:
+        preds_all = preds_all.copy()
+        preds_all["budget_price"] = preds_all.apply(lambda r: sell.get(r["id"], r["price"]), axis=1)
+
 
     # Injury/availability flags for the manager's own players (live only), so the
     # UI can surface them even when the best move this week is elsewhere.
@@ -639,8 +742,10 @@ def build_advice(team_id, gw=None, ft_override=None, picks_gw=None):
     # Transfer decisions weigh the next few gameweeks: evaluate the hold baseline
     # and every transfer option on the blended projection, so the comparison is
     # consistent (does this move improve the run enough to beat the -4?).
+    run_weight = sum(w for k, w in enumerate(FIXTURE_WEIGHTS) if gw + k <= 38)
     pool_b = pool.copy()
-    pool_b["pred"] = pool_b["pred_blend"]
+    # A hit is a one-off cost: compare it with a discounted multiweek points total.
+    pool_b["pred"] = pool_b["pred_blend"] * run_weight
     squad_b = pool_b[pool_b["id"].isin(ids)].copy()
     base_val, _ = optimize_xi(squad_b, conflict_penalty=CONFLICT_PENALTY)
 
@@ -674,10 +779,16 @@ def build_advice(team_id, gw=None, ft_override=None, picks_gw=None):
     free_gain = options[best_free_k][0] - base_val
 
     # chip decision (one per week)
-    timing, _ = chip_timing(ids, preds_all, gw, available, deadline_gw) if available else ({}, [])
+    chip_error = None
+    try:
+        timing, _ = chip_timing(ids, preds_all, gw, available, deadline_gw, total_money) if available else ({}, [])
+    except (RuntimeError, KeyError, ValueError):
+        LOGGER.exception("Chip comparison unavailable for target GW%s", gw)
+        timing = {}
+        chip_error = "Chip comparison is unavailable for this forecast; lineup and transfer advice remain available."
     this_vals = {c: dict(v).get(gw) for c, v in timing.items()}
     near_deadline = (deadline_gw - gw) <= 1
-    rec_chip = recommend_chip(timing, gw)
+    rec_chip = recommend_chip(timing, gw, deadline_gw)
     chip_replaces = rec_chip in ("wildcard", "freehit")
     # Free Hit is one week only, so optimise it on THIS gameweek's projection;
     # Wildcard is permanent, so optimise on the blended next-few-GW run (pool_b).
@@ -698,12 +809,12 @@ def build_advice(team_id, gw=None, ft_override=None, picks_gw=None):
             ip = [i for i in ins if pos.get(i) == p]
             for o, i in zip(op, ip):
                 moves.append({"out": nm.get(o, o), "in": nm.get(i, i),
-                              "out_price": int(prc.get(o, 0)), "in_price": int(prc.get(i, 0))})
+                              "out_price": int(sell.get(o, prc.get(o, 0))), "in_price": int(prc.get(i, 0))})
         transfer = {"verdict": "CHIP", "moves": moves,
                     "text": f"Playing {CHIP_LABEL[rec_chip]} this week — normal transfers don't apply."}
     elif best_k == 0 or net(best_k) <= 1e-6:
         transfer = {"verdict": "HOLD",
-                    "text": "No transfer improves your team this week; keep your free transfer."}
+                    "text": "No transfer improves the discounted next-4 outlook; keep your free transfer."}
     elif best_k <= ft and free_gain < BANK_THRESHOLD and ft < MAX_FT:
         note = " You have a Wildcard, so no need to hoard for a rebuild." if "wildcard" in available else ""
         transfer = {"verdict": "BANK",
@@ -712,21 +823,21 @@ def build_advice(team_id, gw=None, ft_override=None, picks_gw=None):
     else:
         _, new_sq, outs, ins = options[best_k]
         moves = [{"out": nm.get(o, o), "in": nm.get(i, i),
-                  "out_price": int(prc.get(o, 0)), "in_price": int(prc.get(i, 0))} for o, i in
+                  "out_price": int(sell.get(o, prc.get(o, 0))), "in_price": int(prc.get(i, 0))} for o, i in
                  zip(sorted(outs, key=lambda i: ORDER.get(pos.get(i), 9)),
                      sorted(ins, key=lambda i: ORDER.get(pos.get(i), 9)))]
         final_df = _field(new_sq)
         transfer = {"verdict": "TRANSFER", "moves": moves, "k": best_k,
                     "hits": max(0, best_k - ft), "net": round(net(best_k), 2),
                     "post_xi": _xi_rows(final_df, fxmap),
-                    "bank_after": total_money - float(new_sq["price"].sum()),
+                    "bank_after": bank + sum(sell[i] for i in outs) - sum(prc[i] for i in ins),
                     "ft_left": max(0, ft - best_k),
-                    "text": f"Worth +{net(best_k):.2f} pts this week."}
+                    "text": f"Worth +{net(best_k):.2f} discounted pts over the next {min(4, 39-gw)} GWs (after hits)."}
     if not chip_replaces and (ft + 1) in options:
         extra = options[ft + 1][0] - options[best_free_k][0]
         transfer["hit_worth"] = bool(best_k > ft)
         transfer["hit_note"] = (f"A -4 hit {'IS' if best_k > ft else 'is NOT'} worth it: "
-                                f"best extra move adds +{extra:.2f}.")
+                                f"best extra move adds +{extra:.2f} discounted pts over the next {min(4,39-gw)} GWs.")
 
     # chip table + detail — list every chip; mark the ones already played
     chip_table = []
@@ -743,7 +854,7 @@ def build_advice(team_id, gw=None, ft_override=None, picks_gw=None):
         tv = this_vals.get(chip)
         margin = max(1.0, 0.1 * bval)
         near_best = (tv is not None and bval > 0 and tv >= bval - margin
-                     and tv >= CHIP_MIN_VALUE.get(chip, 0.0))
+                     and tv >= (0.0 if gw == deadline_gw else CHIP_MIN_VALUE.get(chip, 0.0)))
         wait_gain = None if tv is None else round(max(0.0, bval - tv), 1)
         row = {"chip": chip, "label": CHIP_LABEL[chip], "best_gw": int(bg), "best_val": float(bval),
                "this_val": (None if tv is None else float(tv)),
@@ -755,7 +866,7 @@ def build_advice(team_id, gw=None, ft_override=None, picks_gw=None):
     if rec_chip in ("wildcard", "freehit"):
         final_df = _field(rec_squad)
         rec_detail = {"type": rec_chip, "squad": _xi_rows(final_df, fxmap),
-                      "bank_after": total_money - float(rec_squad["price"].sum()),
+                      "bank_after": bank + sum(sell[i] for i in (set(ids)-set(rec_squad["id"]))) - sum(prc[i] for i in (set(rec_squad["id"])-set(ids))),
                       "ft_left": ft}
     elif rec_chip == "bboost":
         rec_detail = {"type": "bboost",
@@ -782,6 +893,9 @@ def build_advice(team_id, gw=None, ft_override=None, picks_gw=None):
     return {
         "ok": True, "team_id": int(team_id), "gw": int(gw), "season": SEASON,
         "form_gw": form_gw,
+        "projection": {"source": projection_source, "reason": projection_reason},
+        "budget_estimated": bool(unknown_prices),
+        "selection": selection_explanations(base_xi),
         "ft": int(ft), "ft_estimated": ft_override is None, "bank": int(bank),
         "half": int(half), "half_label": HALF_LABEL[half], "deadline_gw": int(deadline_gw),
         "current_xi": _xi_rows(base_xi, fxmap), "current_captain": cap["name"],
@@ -789,7 +903,9 @@ def build_advice(team_id, gw=None, ft_override=None, picks_gw=None):
         "transfer": transfer,
         "chips": {"available": list(available), "table": chip_table,
                   "recommended": rec_chip, "near_deadline": near_deadline,
-                  "detail": rec_detail},
+                  "detail": rec_detail,
+                  "forecast_end": int(preds_all.loc[preds_all["gw"] >= gw, "gw"].max()) if not preds_all.empty else int(gw),
+                  "error": chip_error},
         "summary": {"transfers": tr, "captain": summary_cap,
                     "chip": CHIP_LABEL[rec_chip] if rec_chip else "none — hold",
                     "triple": rec_chip == "3xc"},

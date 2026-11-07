@@ -120,8 +120,11 @@ def availability(client: FPLClient | None = None) -> dict[int, float]:
         chance = e.get("chance_of_playing_next_round")
         if status == "a":
             out[e["id"]] = 1.0
+        elif status in ("i", "s", "u", "n"):
+            out[e["id"]] = 0.0
         elif chance is not None:
-            out[e["id"]] = chance / 100.0
+            parsed = _num(chance)
+            out[e["id"]] = max(0.0, min(1.0, parsed / 100.0)) if parsed is not None and pd.notna(parsed) else 0.5
         elif status == "d":
             out[e["id"]] = 0.5
         else:  # 'i', 's', 'u', 'n', or unknown -> treat as not playing
@@ -216,8 +219,8 @@ def current_season_frame(client: FPLClient | None = None) -> pd.DataFrame:
         # gameweeks from this season's form (rolling features come from the games
         # already played), instead of having no row to score. Stats are NaN (not
         # yet played); price is the current price so the value feature is right.
-        for fx in summary.get("fixtures", [])[:UPCOMING_HORIZON]:
-            if target_gw is None or fx.get("event") is None or fx["event"] < target_gw:
+        for fx in summary.get("fixtures", []):
+            if target_gw is None or fx.get("event") is None or not target_gw <= fx["event"] < target_gw + UPCOMING_HORIZON:
                 continue
             home = bool(fx.get("is_home"))
             row = dict(meta)
@@ -235,4 +238,5 @@ def current_season_frame(client: FPLClient | None = None) -> pd.DataFrame:
             rows.append(row)
     frame = pd.DataFrame(rows)
     frame.attrs["form_gw"] = max(finished_gws, default=0)
+    frame.attrs["bootstrap"] = boot
     return frame

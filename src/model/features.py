@@ -29,23 +29,33 @@ def build_feature_frame(history: pd.DataFrame) -> pd.DataFrame:
 
     grp = df.groupby(["season", "element"], sort=False)
 
-    # Rolling form features (shift(1) => strictly prior games only).
+    def prior_rolling(series, window):
+        prior = series.shift(1)
+        return prior.dropna().rolling(window, min_periods=1).mean().reindex(series.index).ffill()
+
+    # Ignore unplayed rows when measuring the last N observed appearances.
     for base in ROLL_BASES:
         for w in ROLL_WINDOWS:
             df[f"roll_{base}_{w}"] = grp[base].transform(
-                lambda s, w=w: s.shift(1).rolling(w, min_periods=1).mean()
+                lambda s, w=w: prior_rolling(s, w)
             )
 
     # Share of recent games started (nailed-on proxy).
     df["starts_rate_5"] = grp["starts"].transform(
-        lambda s: s.shift(1).rolling(5, min_periods=1).mean()
+        lambda s: prior_rolling(s, 5)
     )
 
     # Season-to-date signals.
-    df["games_played"] = grp.cumcount()  # number of prior games this season
+    df["games_played"] = grp["minutes"].transform(
+        lambda s: s.notna().astype(int).cumsum().shift(1, fill_value=0))
     df["cum_ppg"] = grp["total_points"].transform(
         lambda s: s.shift(1).expanding().mean()
     )
+
+    # A second match in a double gameweek must not see the first match's result.
+    form_cols = [c for c in df if c.startswith("roll_")] + ["starts_rate_5", "games_played", "cum_ppg"]
+    df[form_cols] = df.groupby(["season", "element", "gw"], sort=False)[form_cols].transform(
+        lambda s: s.iloc[0])
 
     # Fixture context known before kickoff.
     df["is_home"] = df["was_home"].astype("float")

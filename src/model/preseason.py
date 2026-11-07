@@ -82,6 +82,7 @@ def current_season_seed(season: str = None, history: pd.DataFrame = None) -> pd.
         agg["starts_rate_5"] = ("starts", "mean")
         agg["cum_ppg"] = ("total_points", "mean")
         seed = hist.dropna(subset=["code"]).groupby("code").agg(**agg).reset_index()
+        seed["games_played"] = seed["code"].map(hist.groupby("code").size())
         seed["web_name"] = seed["code"].map(code_to_web)
         seed.attrs["form_gw"] = hist.attrs.get("form_gw", 0)
         return seed
@@ -130,13 +131,13 @@ def _next_gameweek(events: list) -> int | None:
 
 
 def _fixture_opponents(fixtures: list, gw: int) -> dict:
-    """team_id -> (opponent_team_id, was_home) for the given gameweek."""
+    """team_id -> all (opponent, home) fixtures, including double gameweeks."""
     out = {}
     for f in fixtures:
         if f.get("event") != gw:
             continue
-        out[f["team_h"]] = (f["team_a"], True)
-        out[f["team_a"]] = (f["team_h"], False)
+        out.setdefault(f["team_h"], []).append((f["team_a"], True))
+        out.setdefault(f["team_a"], []).append((f["team_h"], False))
     return out
 
 
@@ -153,15 +154,15 @@ def preseason_frame(bootstrap: dict, fixtures: list,
     strength = {t["id"]: t for t in bootstrap["teams"]}
     rows = []
     for e in bootstrap["elements"]:
-        o = opp.get(e["team"])
-        if o is None:            # team not playing this GW (blank) -> skip
-            continue
-        rows.append({
-            "id": e["id"], "code": e["code"], "name": _full_name(e),
-            "web_name": e.get("web_name"),
-            "position": POSITION.get(e["element_type"]), "team": e["team"],
-            "value": e["now_cost"], "opponent_team": o[0], "was_home": o[1],
-        })
+        opponents = opp.get(e["team"], [])
+        for opponent, home in opponents or [(None, False)]:
+            rows.append({
+                "id": e["id"], "code": e["code"], "name": _full_name(e),
+                "web_name": e.get("web_name"),
+                "position": POSITION.get(e["element_type"]), "team": e["team"],
+                "value": e["now_cost"], "opponent_team": opponent, "was_home": home,
+                "fixture_count": len(opponents), "is_blank": not opponents,
+            })
     seed = seed_df if seed_df is not None else seed_from_previous_season(seed_season)
     df = pd.DataFrame(rows).merge(seed.drop(columns=["web_name"]),
                                   on="code", how="left")
@@ -185,15 +186,17 @@ def preseason_frame(bootstrap: dict, fixtures: list,
     for b in BASES:
         df[f"roll_{b}_3"] = df[b]
         df[f"roll_{b}_5"] = df[b]
-    df["games_played"] = 0
+    df["games_played"] = df["games_played"].fillna(0) if "games_played" in df else 0
     df["is_home"] = df["was_home"].astype(float)
-    lo = df[["team", "opponent_team"]].min(axis=1).astype(int).astype(str)
-    hi = df[["team", "opponent_team"]].max(axis=1).astype(int).astype(str)
+    lo = df[["team", "opponent_team"]].min(axis=1).fillna(0).astype(int).astype(str)
+    hi = df[["team", "opponent_team"]].max(axis=1).fillna(0).astype(int).astype(str)
     df["match"] = lo + "-" + hi
     for p in POSITION.values():
         df[f"pos_{p}"] = (df["position"] == p).astype(float)
 
-    opp_str = df["opponent_team"].map(strength)
+    opp_str = df["opponent_team"].map(strength).map(
+        lambda v: v if isinstance(v, dict) else {"strength_defence_away": 0,
+        "strength_defence_home": 0, "strength_attack_away": 0, "strength_attack_home": 0})
     home = df["was_home"].to_numpy()
     df["opp_defence"] = [s["strength_defence_away"] if h else s["strength_defence_home"]
                          for s, h in zip(opp_str, home)]
@@ -224,31 +227,46 @@ def preseason_predictions(client: FPLClient = None,
     def _predict(frame):
         if not len(frame):
             return np.array([])
-        return clf.predict_proba(frame[cols])[:, 1] * reg.predict(frame[cols])
+        frame["p_play"] = clf.predict_proba(frame[cols])[:, 1]
+        frame["recent_minutes"] = frame.get("roll_minutes_5", pd.Series(float("nan"), index=frame.index))
+        frame["recent_starts"] = frame.get("starts_rate_5", pd.Series(float("nan"), index=frame.index))
+        frame["recent_form"] = frame.get("roll_total_points_3", pd.Series(float("nan"), index=frame.index))
+        frame["xgi"] = frame.get("roll_expected_goal_involvements_5", pd.Series(float("nan"), index=frame.index))
+        frame["fixture_count"] = frame.get("fixture_count", 1)
+        blank = frame.get("is_blank", pd.Series(False, index=frame.index))
+        frame.loc[blank, "p_play"] = 0.0
+        return frame["p_play"].to_numpy() * reg.predict(frame[cols])
 
     # Blend the next few gameweeks so upcoming fixture difficulty counts, not just
     # GW1. Each gameweek is scored against its own opponent; a weighted average
     # (GW1 heaviest, see FIXTURE_WEIGHTS) becomes the projection. Players are
-    # averaged only over the gameweeks they actually play (blanks are skipped).
+    # averaged over gameweeks: doubles are summed, blanks count as zero.
     gw0 = gw if gw is not None else _next_gameweek(bootstrap["events"])
     if gw0 is None:
         return pd.DataFrame(columns=["id", "name", "position", "team", "match",
                                      "price", "pred", "pred_gw1"])
     wsum, wtot = {}, {}
     base, gw1_pred = None, {}
-    for k, gw in enumerate(range(gw0, gw0 + len(FIXTURE_WEIGHTS))):
+    weekly = []
+    for k, gw in enumerate(range(gw0, min(39, gw0 + len(FIXTURE_WEIGHTS)))):
         frame = preseason_frame(bootstrap, fixtures, seed_season, gw=gw,
                                 seed_df=seed_override)
         if not len(frame):
             continue
         w = FIXTURE_WEIGHTS[k]
         p = _predict(frame)
-        for pid, pv in zip(frame["id"].to_numpy(), p):
+        totals = pd.Series(p, index=frame["id"].to_numpy()).groupby(level=0).sum()
+        week = frame.drop_duplicates("id")[["id", "name", "position", "team", "value"]].rename(columns={"value":"price"}).copy()
+        week["gw"] = gw
+        week["pred"] = week["id"].map(totals)
+        weekly.append(week)
+        for pid, pv in totals.items():
             wsum[pid] = wsum.get(pid, 0.0) + w * pv
             wtot[pid] = wtot.get(pid, 0.0) + w
         if gw == gw0:
-            base = frame                       # GW1 frame carries id/price/match
-            gw1_pred = dict(zip(frame["id"].to_numpy(), p))   # this-gameweek only
+            base = frame.drop_duplicates("id").copy()
+            base["p_play"] = base["id"].map(frame.groupby("id")["p_play"].mean())
+            gw1_pred = totals.to_dict()   # this-gameweek only
     if base is None:
         return pd.DataFrame(columns=["id", "name", "position", "team", "match",
                                      "price", "pred", "pred_gw1"])
@@ -263,27 +281,35 @@ def preseason_predictions(client: FPLClient = None,
         m = df["id"].map(av).fillna(1.0)
         df["pred"] = df["pred"] * m
         df["pred_gw1"] = df["pred_gw1"] * m
-    return df[["id", "name", "position", "team", "match", "value",
-               "pred", "pred_gw1"]].rename(columns={"value": "price"})
+    df["signal_basis"] = "seed_average"
+    result = df[["id", "name", "position", "team", "match", "value",
+               "pred", "pred_gw1", "p_play", "recent_minutes", "recent_starts",
+               "recent_form", "xgi", "fixture_count", "signal_basis"]].rename(columns={"value": "price"})
+    result.attrs["weekly_predictions"] = pd.concat(weekly, ignore_index=True).to_dict("records")
+    return result
 
 
 def fixture_ticker(fixtures: list, teams: list, gw: int, n: int = 4) -> dict:
     """{team_id: [{"opp": short_name, "diff": 1-5, "home": bool}, ...]} for the
     next n gameweeks from `gw`, using FPL's own fixture difficulty ratings."""
     short = {t["id"]: t["short_name"] for t in teams}
-    rows: dict = {}
+    scheduled = {}
     for f in fixtures:
         ev = f.get("event")
-        if ev is None or ev < gw:
+        if ev is None or not gw <= ev < gw+n:
             continue
-        h, a = f["team_h"], f["team_a"]
-        rows.setdefault(h, []).append((ev, short.get(a, "?"), f.get("team_h_difficulty") or 3, True))
-        rows.setdefault(a, []).append((ev, short.get(h, "?"), f.get("team_a_difficulty") or 3, False))
+        for tid, oid, home, diff in [(f["team_h"], f["team_a"], True, f.get("team_h_difficulty")),
+                                      (f["team_a"], f["team_h"], False, f.get("team_a_difficulty"))]:
+            scheduled.setdefault((tid, ev), []).append((short.get(oid, "?"), home, diff or 3))
     out = {}
-    for tid, lst in rows.items():
-        lst.sort(key=lambda x: x[0])
-        out[tid] = [{"opp": opp, "diff": int(diff), "home": home}
-                    for _, opp, diff, home in lst[:n]]
+    for tid in short:
+        out[tid] = []
+        for ev in range(gw, min(39, gw+n)):
+            games = scheduled.get((tid, ev), [])
+            out[tid].append({"opp": " + ".join(g[0] for g in games) if games else "BLANK",
+                             "home": all(g[1] for g in games),
+                             "diff": max((g[2] for g in games), default=0),
+                             "gw": ev, "count": len(games)})
     return out
 
 

@@ -80,14 +80,22 @@ def test_changing_partial_scores_does_not_change_seed_then_closure_refreshes_it(
 
 
 @pytest.mark.parametrize("fallback", [False, True])
-def test_live_normal_and_fallback_paths_pass_same_target_to_xi_and_ticker(monkeypatch, fallback):
+@pytest.mark.parametrize("freehit", [False, True])
+def test_live_normal_and_fallback_paths_pass_same_target_to_xi_and_ticker(monkeypatch, fallback, freehit):
     monkeypatch.setattr(personal, "DATA_SOURCE", "live")
     monkeypatch.setattr(live, "upcoming_gameweek", lambda: 11)
     monkeypatch.setattr(live, "current_gameweek", lambda: 10)
     raw = pd.DataFrame(dict(gw=[11]*15, element=range(15), fixture=[111]*15))
     raw.attrs["form_gw"] = 9
     monkeypatch.setattr(personal, "load_history", lambda: raw)
-    monkeypatch.setattr(personal, "get_picks", lambda team, gw: {"picks": [{"element": i} for i in range(15)]})
+    pick_weeks = []
+    def picks(team, gw):
+        pick_weeks.append(gw)
+        return {"picks": [{"element": i} for i in range(15)],
+                "active_chip": "freehit" if freehit and gw == 10 else None,
+                "entry_history": {"bank": 7 if gw == 9 else 0}}
+    monkeypatch.setattr(personal, "get_picks", picks)
+    monkeypatch.setattr(personal, "get_transfers", lambda _: [])
     monkeypatch.setattr(personal, "get_history", lambda _: {"current": [], "chips": []})
     positions = ["GK"]*2 + ["DEF"]*5 + ["MID"]*5 + ["FWD"]*3
     pool = pd.DataFrame(dict(id=range(15), gw=[11]*15, pred=[4.0]*15,
@@ -131,11 +139,16 @@ def test_live_normal_and_fallback_paths_pass_same_target_to_xi_and_ticker(monkey
     advice = personal.build_advice(123)
     assert advice["ok"]
     assert advice["gw"] == 11
+    assert pick_weeks == ([10, 9] if freehit else [10])
+    assert advice["bank"] == (7 if freehit else 0)
     assert advice["form_gw"] == 9
     assert sum(row["role"] == "start" for row in advice["current_xi"]) == 11
     assert all(row["fix"] == [{"opp": "HUL"}] for row in advice["current_xi"])
     assert all(row["pred"] == (5.0 if fallback else 4.0) for row in advice["current_xi"])
-    assert all(row["pred_run"] == 4.0 for row in advice["current_xi"])
+    expected_run = 4.0 if fallback else round(4.0 / sum(preseason.FIXTURE_WEIGHTS), 2)
+    assert all(row["pred_run"] == expected_run for row in advice["current_xi"])
+    assert advice["projection"]["source"] == ("current_form_seed" if fallback else "season_model")
+    assert len(advice["selection"]) == 4
     assert seen["ticker"] == 11
     assert not fallback or seen["seed"] == 11
 

@@ -48,8 +48,8 @@ def test_ft_heavy_use_keeps_count_low():
     assert estimate_free_transfers(heavy, 10) == 1
 
 
-def test_wildcard_does_not_inflate_ft():
-    # a wildcard resets accumulation; entering the next week stays small.
+def test_wildcard_preserves_ft_without_earning_an_extra_transfer():
+    # The chip preserves the count entering its GW.
     h = _history(transfers={1: 3, 2: 3}, chips=[{"event": 3, "name": "wildcard"}])
     assert estimate_free_transfers(h, 4) <= 2
 

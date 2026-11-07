@@ -92,7 +92,7 @@ def optimize_squad(players: pd.DataFrame, budget: int = DEFAULT_BUDGET,
     p = players.reset_index(drop=True)
     idx = list(p.index)
     pred = p["pred"].to_dict()
-    price = p["price"].to_dict()
+    price = p.get("budget_price", p["price"]).to_dict()
     pos = p["position"].to_dict()
 
     prob = pulp.LpProblem("fpl_squad", pulp.LpMaximize)
