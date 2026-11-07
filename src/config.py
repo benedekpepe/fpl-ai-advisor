@@ -28,9 +28,9 @@ LIVE_SEASON = "2026-27"             # the live season (used when DATA_SOURCE=liv
 TEST_SEASON = "2024-25"                                  # out-of-time backtest
 SEED_SEASON = "2025-26"          # last completed season, used to seed pre-season/GW1 cold-start
 
-# Stack-awareness: how hard to discourage starting two players who face each other
-# with opposed point sources (attacker vs defender/keeper). 0 disables it.
-CONFLICT_PENALTY = 0.35
+# Optional risk preference, disabled: opposing players do not reduce the sum
+# of expected points. Keep zero for the default expected-points objective.
+CONFLICT_PENALTY = 0.0
 
 # Bench players score no XI points, so the optimiser would otherwise fill the
 # bench with the cheapest bodies regardless of whether they actually play. This

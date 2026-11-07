@@ -16,7 +16,6 @@ needed. Once real gameweeks are played the normal in-season path takes over.
 Run it:  python -m src.model.preseason
 """
 import io
-from functools import lru_cache
 
 import joblib
 import numpy as np
@@ -26,7 +25,7 @@ import requests
 from src.config import (MERGED_GW_URL, PLAYERS_RAW_URL, SEED_SEASON, MODEL_PATH,
                         CONFLICT_PENALTY, FIXTURE_WEIGHTS)
 from src.ingestion.fpl_client import FPLClient
-from src.ingestion.live import availability
+from src.ingestion.live import availability, next_open_gameweek
 from src.optim.optimizer import optimize_squad
 
 POSITION = {1: "GK", 2: "DEF", 3: "MID", 4: "FWD"}
@@ -55,9 +54,7 @@ def _csv(url: str) -> pd.DataFrame:
         requests.get(url, timeout=60).content.decode("utf-8", "replace")))
 
 
-@lru_cache(maxsize=2)
-@lru_cache(maxsize=2)
-def current_season_seed(season: str = None) -> pd.DataFrame:
+def current_season_seed(season: str = None, history: pd.DataFrame = None) -> pd.DataFrame:
     """Per-player per-game form averages from THIS season's played games so far,
     keyed by code — the in-season analogue of ``seed_from_previous_season``. Feed
     it to ``preseason_predictions(seed_override=...)`` to forward-predict the
@@ -70,10 +67,13 @@ def current_season_seed(season: str = None) -> pd.DataFrame:
         boot = client.get_bootstrap_static()
         id_to_code = {e["id"]: e["code"] for e in boot["elements"]}
         code_to_web = {e["code"]: e.get("web_name") for e in boot["elements"]}
-        hist = current_season_frame(client)
+        hist = history if history is not None else current_season_frame(client)
         if not len(hist):
             return empty
-        hist = hist.copy()
+        # Upcoming rows carry no observations and must not create an all-NaN seed.
+        hist = hist.loc[hist["minutes"].notna()].copy()
+        if hist.empty:
+            return empty
         hist["code"] = hist["element"].map(id_to_code)
         for b in BASES + ["starts"]:
             if b not in hist.columns:
@@ -83,6 +83,7 @@ def current_season_seed(season: str = None) -> pd.DataFrame:
         agg["cum_ppg"] = ("total_points", "mean")
         seed = hist.dropna(subset=["code"]).groupby("code").agg(**agg).reset_index()
         seed["web_name"] = seed["code"].map(code_to_web)
+        seed.attrs["form_gw"] = hist.attrs.get("form_gw", 0)
         return seed
     except Exception:  # noqa: BLE001 — any issue → caller falls back to last season
         return empty
@@ -125,13 +126,7 @@ def _apply_fallback(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def _next_gameweek(events: list) -> int | None:
-    for e in events:
-        if e.get("is_current"):
-            return e["id"]
-    for e in events:
-        if e.get("is_next"):
-            return e["id"]
-    return None
+    return next_open_gameweek(events)
 
 
 def _fixture_opponents(fixtures: list, gw: int) -> dict:
@@ -210,7 +205,8 @@ def preseason_frame(bootstrap: dict, fixtures: list,
 def preseason_predictions(client: FPLClient = None,
                           seed_season: str = SEED_SEASON,
                           apply_availability: bool = True,
-                          seed_override: pd.DataFrame = None) -> pd.DataFrame:
+                          seed_override: pd.DataFrame = None,
+                          gw: int = None) -> pd.DataFrame:
     """Projected points for every player for the upcoming (unplayed) gameweek.
 
     With ``apply_availability`` (default), each projection is scaled by the live
@@ -234,7 +230,10 @@ def preseason_predictions(client: FPLClient = None,
     # GW1. Each gameweek is scored against its own opponent; a weighted average
     # (GW1 heaviest, see FIXTURE_WEIGHTS) becomes the projection. Players are
     # averaged only over the gameweeks they actually play (blanks are skipped).
-    gw0 = _next_gameweek(bootstrap["events"])
+    gw0 = gw if gw is not None else _next_gameweek(bootstrap["events"])
+    if gw0 is None:
+        return pd.DataFrame(columns=["id", "name", "position", "team", "match",
+                                     "price", "pred", "pred_gw1"])
     wsum, wtot = {}, {}
     base, gw1_pred = None, {}
     for k, gw in enumerate(range(gw0, gw0 + len(FIXTURE_WEIGHTS))):

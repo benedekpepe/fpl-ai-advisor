@@ -9,7 +9,7 @@ Before the season starts it **builds your opening squad from scratch**; once
 gameweeks are played it advises the best **captain**, **transfer(s)** (weighing
 form against fixtures, including whether a −4 hit is worth taking) and **chip
 timing** — all driven by a points-prediction model and a constrained,
-stack-aware squad optimiser, behind a Streamlit dashboard.
+squad optimiser, behind a Streamlit dashboard.
 
 > **Unofficial.** Not affiliated with, endorsed by, or connected to the Premier
 > League or Fantasy Premier League. Built for personal use and as a portfolio
@@ -62,9 +62,13 @@ stack-aware squad optimiser, behind a Streamlit dashboard.
   from selection, benched if you own them, become transfer-out candidates, and
   are never recommended as buys; any injured or doubtful players in your own
   squad are also flagged at the top of the weekly advice.
-- **Stack-aware** — it won't start (or transfer in) two players who face each
-  other with opposed point sources — an attacker against a defender/keeper — so
-  you don't pick both sides of the same match.
+- **Expected-points selection** — the default objective maximises projected
+  points without a hidden penalty for opposing players. Correlation changes risk,
+  not the sum of expected points. The optional conflict penalty is disabled.
+- **Consistent live gameweeks** — advice targets the earliest open deadline;
+  form uses only finished, FPL-checked gameweeks. The UI shows the form cutoff,
+  while injuries and upcoming fixtures stay live. Both normal and fallback
+  projections use the same target gameweek.
 
 ## Screenshots
 
@@ -98,7 +102,7 @@ stack-aware squad optimiser, behind a Streamlit dashboard.
    discourages starting opposing players from the same match. The same engine
    powers the builder, the best-XI choice and the transfer planner.
 6. **Advisor** — reconstructs your free-transfer count, applies live availability,
-   runs the transfer/hit math (stack-aware) and the chip-timing logic.
+   runs the transfer/hit math and the chip-timing logic.
 7. **Dashboard** — a Streamlit app that renders the pitch, the recommended moves
    and the chip plan, and shows the right mode for where the season is.
 

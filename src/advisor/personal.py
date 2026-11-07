@@ -43,9 +43,13 @@ def predict_all(season: str) -> pd.DataFrame:
     session rather than on every request. Call ``predict_all.cache_clear()``
     after re-ingesting fresh data.
     """
+    return _predict_from_history(season, load_history())
+
+
+def _predict_from_history(season: str, raw: pd.DataFrame) -> pd.DataFrame:
+    """Score one history snapshot; live callers must not reuse a season-only cache."""
     bundle = joblib.load(MODEL_PATH)
     clf, reg, cols = bundle["clf"], bundle["reg"], bundle["cols"]
-    raw = load_history()
     feats = build_feature_frame(attach_opponent_strength(raw))
     feats = feats[feats["season"] == season].copy()
     if feats.empty:                       # early season: no current-season rows yet
@@ -215,6 +219,8 @@ def optimize_xi(squad: pd.DataFrame, conflict_penalty: float = 0.0):
         prob += pulp.lpSum(y[i] for i in mem) >= XI_MIN[p]
         prob += pulp.lpSum(y[i] for i in mem) <= XI_MAX[p]
     prob.solve(pulp.PULP_CBC_CMD(msg=0))
+    if pulp.LpStatus[prob.status] != "Optimal":
+        raise RuntimeError(f"Solver status: {pulp.LpStatus[prob.status]}")
     s["starting"] = [int(round(y[i].value())) for i in idx]
     s["captain"] = [int(round(c[i].value())) for i in idx]
     return pulp.value(prob.objective), s
@@ -518,14 +524,17 @@ def build_advice(team_id, gw=None, ft_override=None, picks_gw=None):
     gameweek in progress. Pass `gw` (as the demo does) to advise on a specific,
     already-played gameweek, reading picks from that same gameweek.
     """
-    if gw is None:
+    if gw is None or DATA_SOURCE == "live":
         from src.ingestion.live import upcoming_gameweek, current_gameweek
-        gw = upcoming_gameweek()                       # target: next changeable GW
+        target = upcoming_gameweek()
+        if gw is not None and gw != target:
+            return {"ok": False, "error": "Live advice is only available for the next open gameweek."}
+        gw = target                                   # one target for every code path
         if picks_gw is None:
             picks_gw = current_gameweek()              # current team: GW in progress
         if gw is None:
             return {"ok": False, "team_id": team_id, "gw": None, "season": SEASON,
-                    "error": "Could not detect the current gameweek."}
+                    "error": "No upcoming gameweek with an open deadline is available."}
     if picks_gw is None:
         picks_gw = gw                                  # demo: picks come from the same GW
     picks = get_picks(team_id, picks_gw)
@@ -537,22 +546,31 @@ def build_advice(team_id, gw=None, ft_override=None, picks_gw=None):
     available, deadline_gw, half = chips_available(history, gw)
     used_chips = chips_used(history, gw)
 
+    live_raw = None
+    form_gw = None
     try:
-        preds_all = predict_all(SEASON)
+        if DATA_SOURCE == "live":
+            live_raw = load_history()
+            form_gw = live_raw.attrs.get("form_gw", 0)
+            preds_all = _predict_from_history(SEASON, live_raw)
+        else:
+            preds_all = predict_all(SEASON)
         pool = preds_all[preds_all["gw"] == gw].copy()
     except Exception:  # noqa: BLE001 — thin/odd early-season data → use the seed
         preds_all = pd.DataFrame(columns=["gw", "id", "pred"])
         pool = pd.DataFrame()
-    fxmap = team_fixtures(SEASON, gw, 4)
-    if DATA_SOURCE == "live" and not fxmap:
-        # The played history has no future rows, so pull upcoming fixtures from the
-        # live endpoint (same ticker the builder uses), keyed by team id.
+    fxmap = {} if DATA_SOURCE == "live" else team_fixtures(SEASON, gw, 4)
+    if DATA_SOURCE == "live":
+        # Use the authoritative schedule, never opponents inferred from player
+        # history (which may include matches played for a previous club).
         try:
             from src.ingestion.fpl_client import FPLClient
             from src.model.preseason import fixture_ticker
             _c = FPLClient()
-            fxmap = fixture_ticker(_c.get_fixtures(),
-                                   _c.get_bootstrap_static()["teams"], gw, 4)
+            live_teams = _c.get_bootstrap_static()["teams"]
+            fxmap = fixture_ticker(_c.get_fixtures(), live_teams, gw, 4)
+            # Normal live predictions use club codes; seeded predictions use IDs.
+            fxmap.update({t["short_name"]: fxmap.get(t["id"], []) for t in live_teams})
         except Exception:  # noqa: BLE001
             fxmap = {}
 
@@ -561,9 +579,10 @@ def build_advice(team_id, gw=None, ft_override=None, picks_gw=None):
         # it: prefer THIS season's form (from games played so far), falling back to
         # last season's seed only until a gameweek has actually been played.
         from src.model.preseason import preseason_predictions, current_season_seed
-        cs = current_season_seed()
+        cs = current_season_seed(history=live_raw)
+        form_gw = cs.attrs.get("form_gw", form_gw) if len(cs) else 0
         seed = preseason_predictions(apply_availability=False,
-                                     seed_override=cs if len(cs) else None)
+                                     seed_override=cs if len(cs) else None, gw=gw)
         if not len(seed):
             return {"ok": False, "team_id": team_id, "gw": gw, "season": SEASON,
                     "error": "Not enough data yet to advise — try again once the "
@@ -571,9 +590,9 @@ def build_advice(team_id, gw=None, ft_override=None, picks_gw=None):
         pool = seed.rename(columns={"pred": "pred_blend", "pred_gw1": "pred"}).copy()
         pool["gw"] = gw                    # match already present from the seed
     else:
-        # Attach each player's fixture id for this gameweek so the XI *and* transfer
-        # optimisers are stack-aware (won't stack opposing players from one match).
-        _hist = load_history()
+        # Retain the target fixture ID for optional risk preferences. The default
+        # expected-points objective has no opposition penalty.
+        _hist = live_raw if live_raw is not None else load_history()
         if "gw" not in _hist.columns and "GW" in _hist.columns:
             _hist = _hist.rename(columns={"GW": "gw"})
         if "season" in _hist.columns:
@@ -762,6 +781,7 @@ def build_advice(team_id, gw=None, ft_override=None, picks_gw=None):
 
     return {
         "ok": True, "team_id": int(team_id), "gw": int(gw), "season": SEASON,
+        "form_gw": form_gw,
         "ft": int(ft), "ft_estimated": ft_override is None, "bank": int(bank),
         "half": int(half), "half_label": HALF_LABEL[half], "deadline_gw": int(deadline_gw),
         "current_xi": _xi_rows(base_xi, fxmap), "current_captain": cap["name"],

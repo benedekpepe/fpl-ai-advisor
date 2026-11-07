@@ -273,7 +273,8 @@ def pitch_html(rows, bb=False):
     return "".join(out)
 
 
-FX_LEGEND = ("<div class='fxleg'><span>Next 4 fixtures</span>"
+FX_LEGEND = ("<div class='legend'>Large score = target GW · small score = weighted next-4 average</div>"
+             "<div class='fxleg'><span>Next 4 fixtures</span>"
              "<span class='scale'>easy<i class='sw d1'></i><i class='sw d2'></i>"
              "<i class='sw d3'></i><i class='sw d4'></i><i class='sw d5'></i>hard</span></div>")
 
@@ -468,14 +469,17 @@ def render_html(a):
 def _preseason_data():
     """Live projections + injury flags + fixture ticker for the upcoming gameweek."""
     from src.ingestion.fpl_client import FPLClient
-    from src.ingestion.live import availability, current_gameweek
+    from src.ingestion.live import availability, next_open_gameweek
     from src.model.preseason import preseason_predictions, flagged_players, fixture_ticker
     client = FPLClient()
     bootstrap = client.get_bootstrap_static()
     fixtures = client.get_fixtures()
-    preds = preseason_predictions(client)
+    gw = next_open_gameweek(bootstrap["events"])
+    if gw is None:
+        raise ValueError("No upcoming gameweek with an open deadline is available.")
+    preds = preseason_predictions(client, gw=gw)
     team_short = {t["id"]: t["short_name"] for t in bootstrap["teams"]}
-    ticker = fixture_ticker(fixtures, bootstrap["teams"], current_gameweek(client) or 1)
+    ticker = fixture_ticker(fixtures, bootstrap["teams"], gw)
     return preds, flagged_players(bootstrap), availability(client), team_short, ticker
 
 
@@ -583,6 +587,10 @@ def live_advice_view():
             if not advice["ok"]:
                 st.warning(advice["error"])
             else:
+                cutoff = advice.get("form_gw")
+                form_label = f"GW{cutoff}" if cutoff else "previous-season seed"
+                st.caption(f"Advice: GW{advice['gw']} · Form data through: {form_label}. "
+                           "Unfinished or unchecked gameweeks excluded; availability is live.")
                 st.markdown(render_html(advice), unsafe_allow_html=True)
         except Exception as exc:  # noqa: BLE001
             import traceback

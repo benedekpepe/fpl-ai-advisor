@@ -21,6 +21,8 @@ Wiring (done once, in August):
          pool["pred"] *= pool["id"].map(av).fillna(1.0)
      so injured/suspended players stop being recommended.
 """
+from datetime import datetime, timezone
+
 import pandas as pd
 
 from src.ingestion.fpl_client import FPLClient
@@ -79,21 +81,29 @@ def season_started(client: FPLClient | None = None) -> bool:
         return False
 
 
+def next_open_gameweek(events: list, now: datetime | None = None) -> int | None:
+    """Earliest event whose deadline is still in the future; never a locked GW."""
+    now = now or datetime.now(timezone.utc)
+    candidates = []
+    for event in events:
+        try:
+            deadline = datetime.fromisoformat(event["deadline_time"].replace("Z", "+00:00"))
+        except (KeyError, TypeError, ValueError):
+            continue
+        if deadline > now:
+            candidates.append((deadline, event["id"]))
+    return min(candidates)[1] if candidates else None
+
+
+def completed_gameweeks(events: list) -> set[int]:
+    """Only finished events whose points FPL has checked are valid form data."""
+    return {e["id"] for e in events if e.get("finished") and e.get("data_checked")}
+
+
 def upcoming_gameweek(client: FPLClient | None = None) -> int | None:
-    """The next gameweek you can still change — the one whose deadline is in the
-    future (FPL ``is_next``). Falls back to ``is_current``, then None. This is the
-    gameweek in-season advice should target (you can't change a live one)."""
-    try:
-        events = (client or FPLClient()).get_bootstrap_static()["events"]
-    except Exception:  # noqa: BLE001
-        return None
-    for e in events:
-        if e.get("is_next"):
-            return e["id"]
-    for e in events:
-        if e.get("is_current"):
-            return e["id"]
-    return None
+    """Next event with an open deadline, including GW1; None after season end."""
+    events = (client or FPLClient()).get_bootstrap_static()["events"]
+    return next_open_gameweek(events)
 
 
 def availability(client: FPLClient | None = None) -> dict[int, float]:
@@ -166,7 +176,8 @@ def current_season_frame(client: FPLClient | None = None) -> pd.DataFrame:
     # whose match hasn't kicked off showing 0 minutes/points in their history — an
     # incomplete row that would drag their form down and trigger phantom transfers.
     # So form is built only from finished gameweeks; the in-progress one is skipped.
-    finished_gws = {e["id"] for e in boot.get("events", []) if e.get("finished")}
+    finished_gws = completed_gameweeks(boot.get("events", []))
+    target_gw = next_open_gameweek(boot.get("events", []))
 
     def _fetch(el):
         try:
@@ -189,7 +200,7 @@ def current_season_frame(client: FPLClient | None = None) -> pd.DataFrame:
             "team": team_name.get(el.get("team")),
         }
         for h in summary.get("history", []):
-            if finished_gws and h.get("round") not in finished_gws:
+            if h.get("round") not in finished_gws:
                 continue                   # gameweek still in progress — incomplete
             row = dict(meta)
             row["gw"] = h.get("round")
@@ -206,7 +217,7 @@ def current_season_frame(client: FPLClient | None = None) -> pd.DataFrame:
         # already played), instead of having no row to score. Stats are NaN (not
         # yet played); price is the current price so the value feature is right.
         for fx in summary.get("fixtures", [])[:UPCOMING_HORIZON]:
-            if fx.get("event") is None:
+            if target_gw is None or fx.get("event") is None or fx["event"] < target_gw:
                 continue
             home = bool(fx.get("is_home"))
             row = dict(meta)
@@ -222,4 +233,6 @@ def current_season_frame(client: FPLClient | None = None) -> pd.DataFrame:
                                         # rolling form of later upcoming gameweeks
             row["value"] = el.get("now_cost", 0)   # current price for the value feature
             rows.append(row)
-    return pd.DataFrame(rows)
+    frame = pd.DataFrame(rows)
+    frame.attrs["form_gw"] = max(finished_gws, default=0)
+    return frame
