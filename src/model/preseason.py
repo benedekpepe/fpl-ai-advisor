@@ -27,6 +27,7 @@ from src.config import (MERGED_GW_URL, PLAYERS_RAW_URL, SEED_SEASON, MODEL_PATH,
 from src.ingestion.fpl_client import FPLClient
 from src.ingestion.live import availability, next_open_gameweek
 from src.optim.optimizer import optimize_squad
+from src.data.teams import resolve_live_teams
 
 POSITION = {1: "GK", 2: "DEF", 3: "MID", 4: "FWD"}
 STATUS_LABEL = {"a": "available", "d": "doubtful", "i": "injured",
@@ -151,7 +152,7 @@ def preseason_frame(bootstrap: dict, fixtures: list,
         gw = _next_gameweek(bootstrap["events"])
     opp = _fixture_opponents(fixtures, gw)
 
-    strength = {t["id"]: t for t in bootstrap["teams"]}
+    strength = {t["id"]: t for t in resolve_live_teams(bootstrap["teams"])}
     rows = []
     for e in bootstrap["elements"]:
         opponents = opp.get(e["team"], [])
@@ -197,6 +198,8 @@ def preseason_frame(bootstrap: dict, fixtures: list,
     opp_str = df["opponent_team"].map(strength).map(
         lambda v: v if isinstance(v, dict) else {"strength_defence_away": 0,
         "strength_defence_home": 0, "strength_attack_away": 0, "strength_attack_home": 0})
+    df["opponent_rating_source"] = df["opponent_team"].map(
+        lambda tid: strength.get(tid, {}).get("opponent_rating_source", "blank"))
     home = df["was_home"].to_numpy()
     df["opp_defence"] = [s["strength_defence_away"] if h else s["strength_defence_home"]
                          for s, h in zip(opp_str, home)]
@@ -233,6 +236,7 @@ def preseason_predictions(client: FPLClient = None,
         frame["recent_form"] = frame.get("roll_total_points_3", pd.Series(float("nan"), index=frame.index))
         frame["xgi"] = frame.get("roll_expected_goal_involvements_5", pd.Series(float("nan"), index=frame.index))
         frame["fixture_count"] = frame.get("fixture_count", 1)
+        frame["opponent_rating_source"] = frame.get("opponent_rating_source", "historical")
         blank = frame.get("is_blank", pd.Series(False, index=frame.index))
         frame.loc[blank, "p_play"] = 0.0
         return frame["p_play"].to_numpy() * reg.predict(frame[cols])
@@ -284,7 +288,7 @@ def preseason_predictions(client: FPLClient = None,
     df["signal_basis"] = "seed_average"
     result = df[["id", "name", "position", "team", "match", "value",
                "pred", "pred_gw1", "p_play", "recent_minutes", "recent_starts",
-               "recent_form", "xgi", "fixture_count", "signal_basis"]].rename(columns={"value": "price"})
+               "recent_form", "xgi", "fixture_count", "signal_basis", "opponent_rating_source"]].rename(columns={"value": "price"})
     result.attrs["weekly_predictions"] = pd.concat(weekly, ignore_index=True).to_dict("records")
     return result
 

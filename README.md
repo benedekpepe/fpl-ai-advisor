@@ -94,7 +94,8 @@ status, lineup explanations and the validation panel described below.
 2. **Features** — rolling and season-to-date form use only prior observations;
    both matches in a double share pre-gameweek form. Unplayed future rows do not
    consume the rolling window. Minutes/starts trends, home/away and opponent
-   attack/defence strengths provide context; live strengths come from the FPL API.
+   attack/defence strengths provide context. Uninitialised live opponent ratings
+   use labelled prior-season/neutral estimates instead of zero-strength inputs.
 3. **Model** — a two-stage expected-points model: `P(plays) × E[points | plays]`,
    each stage a LightGBM model. Splitting "will they play" from "how well" handles
    rotation better than a single regressor.
@@ -320,7 +321,9 @@ this separate evaluation, not measured performance of the current deployed artif
 - Chip comparisons use the manager's budget, blank-week zeroes, current availability
   and seeded per-week forecasts when necessary. An expiring chip with positive gain
   is considered even below the normal save-it-for-later threshold. No-data is not a hold verdict.
-- Live opponent strengths come from live bootstrap metadata. Historical form weights
+- Live opponent strengths use positive, finite bootstrap ratings. Zero or missing
+  values fall back to the last completed season, matched by club code; unmatched
+  clubs use the valid ratings' median, and the UI discloses those estimates. Historical form weights
   use only rounds before the target, and genuine double-GW appearances are not clipped
   to a round count.
 

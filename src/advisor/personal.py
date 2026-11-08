@@ -71,6 +71,7 @@ def _predict_from_history(season: str, raw: pd.DataFrame) -> pd.DataFrame:
         group["form_weight"] = weight
         scored.append(group)
     feats = pd.concat(scored)
+    feats["opponent_rating_source"] = feats.get("opponent_rating_source", "historical")
     return feats.groupby(["gw", "element"]).agg(
         name=("name", "first"), position=("position", "first"),
         team=("team", "first"), price=("value", "first"),
@@ -79,6 +80,7 @@ def _predict_from_history(season: str, raw: pd.DataFrame) -> pd.DataFrame:
         p_play=("p_play", "mean"), recent_minutes=("roll_minutes_5", "first"),
         recent_starts=("starts_rate_5", "first"), recent_form=("roll_total_points_3", "first"),
         form_weight=("form_weight", "first"), fixture_count=("fixture", "nunique"),
+        opponent_rating_source=("opponent_rating_source", "first"),
         actual=("total_points", "sum"),
     ).reset_index().rename(columns={"element": "id"})
 
@@ -893,7 +895,9 @@ def build_advice(team_id, gw=None, ft_override=None, picks_gw=None):
     return {
         "ok": True, "team_id": int(team_id), "gw": int(gw), "season": SEASON,
         "form_gw": form_gw,
-        "projection": {"source": projection_source, "reason": projection_reason},
+        "projection": {"source": projection_source, "reason": projection_reason,
+                       "opponent_ratings": sorted(pool["opponent_rating_source"].dropna().unique().tolist())
+                       if "opponent_rating_source" in pool else []},
         "budget_estimated": bool(unknown_prices),
         "selection": selection_explanations(base_xi),
         "ft": int(ft), "ft_estimated": ft_override is None, "bank": int(bank),

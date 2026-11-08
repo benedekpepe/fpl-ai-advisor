@@ -39,6 +39,11 @@ def forecast_status(advice):
     form = f'Form through GW{cutoff}' if cutoff else ('Previous-season form' if seeded else 'Historical form')
     reason = projection.get('reason')
     note = f"<small>{text(reason)}</small>" if reason else ''
+    rating_sources = projection.get('opponent_ratings', [])
+    if 'previous_season' in rating_sources:
+        note += "<small>Opponent ratings: previous-season values where live ratings are unavailable.</small>"
+    if 'neutral' in rating_sources:
+        note += "<small>Neutral opponent-rating estimates used for unmatched clubs.</small>"
     if advice.get('budget_estimated'):
         note += "<small>Selling prices partly estimated · check your FPL transfer budget.</small>"
     return (f"<div class='forecast-status{' seed' if seeded else ''}'><div><strong>"

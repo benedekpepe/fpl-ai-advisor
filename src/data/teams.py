@@ -8,12 +8,13 @@ cached in-process, so the previously duplicated network calls collapse into
 one.
 """
 import io
+import math
 from functools import lru_cache
 
 import pandas as pd
 import requests
 
-from src.config import TEAMS_URL
+from src.config import TEAMS_URL, SEED_SEASON
 
 _STRENGTH_COLS = [
     "strength_attack_home", "strength_attack_away",
@@ -62,3 +63,53 @@ def teams_meta(season: str) -> dict:
             s = 3
         out[int(r["id"])] = (str(r["short_name"]), s)
     return out
+
+
+def resolve_live_teams(teams: list, previous_season: str = SEED_SEASON) -> list:
+    """Reject uninitialised ratings; match archived clubs by code, never numeric ID.
+
+    Keep valid live fields. Missing/zero fields use the last completed season;
+    unmatched/promoted clubs use the valid rating population's median. If no
+    defensible prior exists, fail rather than interpret zero as a weak opponent.
+    """
+    def valid(value):
+        try:
+            return math.isfinite(float(value)) and float(value) > 0
+        except (TypeError, ValueError):
+            return False
+
+    needs_prior = any(not valid(t.get(c)) for t in teams for c in _STRENGTH_COLS)
+    archived = pd.DataFrame()
+    if needs_prior:
+        try:
+            archived = _teams_csv(previous_season).copy()
+        except Exception:
+            archived = pd.DataFrame()
+    by_code = (archived.drop_duplicates("short_name").set_index("short_name").to_dict("index")
+               if "short_name" in archived else {})
+    medians = {}
+    for col in _STRENGTH_COLS:
+        candidates = [v for v in archived.get(col, []) if valid(v)]
+        if not candidates:
+            candidates = [t.get(col) for t in teams if valid(t.get(col))]
+        medians[col] = float(pd.Series(candidates, dtype=float).median()) if candidates else None
+    resolved = []
+    for team in teams:
+        row = dict(team)
+        source = "live"
+        old = by_code.get(team.get("short_name"), {})
+        for col in _STRENGTH_COLS:
+            if valid(row.get(col)):
+                continue
+            if valid(old.get(col)):
+                row[col] = float(old[col])
+                if source != "neutral":
+                    source = "previous_season"
+            elif medians[col] is not None:
+                row[col] = medians[col]
+                source = "neutral"
+            else:
+                raise ValueError("Opponent strength ratings are unavailable; refusing zero-strength forecasts.")
+        row["opponent_rating_source"] = source
+        resolved.append(row)
+    return resolved

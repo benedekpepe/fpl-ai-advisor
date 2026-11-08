@@ -20,7 +20,7 @@ from sklearn.metrics import mean_absolute_error, mean_squared_error
 
 from src.model.features import build_feature_frame, feature_columns, TARGET
 from src.data.history import load_history_from_db
-from src.data.teams import team_strength
+from src.data.teams import team_strength, resolve_live_teams
 from src.config import (MODEL_PATH, EXTRA_FEATURES, TEST_SEASON,
                         LGBM_PARAMS as PARAMS, CLF_N_ESTIMATORS)
 
@@ -46,9 +46,9 @@ def attach_opponent_strength(history: pd.DataFrame) -> pd.DataFrame:
     """Merge each row's opponent attack/defence strength (home/away aware)."""
     bootstrap = history.attrs.get("bootstrap", {})
     if bootstrap.get("teams"):
-        teams = pd.DataFrame(bootstrap["teams"])
+        teams = pd.DataFrame(resolve_live_teams(bootstrap["teams"]))
         cols = ["id", "strength_attack_home", "strength_attack_away",
-                "strength_defence_home", "strength_defence_away"]
+                "strength_defence_home", "strength_defence_away", "opponent_rating_source"]
         strength = teams[cols].rename(columns={"id": "opponent_team"})
         strength["season"] = history["season"].iloc[0]
     else:
