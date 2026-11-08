@@ -85,6 +85,12 @@ squad optimiser, behind a Streamlit dashboard.
   60-minute and substitute-appearance probabilities, plus estimated minutes.
   These supplement observed form; they do not change the point model or lineup
   objective. Seeded fallback forecasts do not invent these probabilities.
+- **Defensive contribution context** — the last-five-match average defensive
+  bonus is shown where live contribution data is known. It is already included
+  in historical total points, not added again to forecasts. The current point
+  artifact has no dedicated contribution feature; an experimental replacement
+  failed the broader accuracy check and remains disabled. See the
+  [Konsa–Calafiori investigation](docs/defence-context-review.md).
 
 ## Screenshots
 

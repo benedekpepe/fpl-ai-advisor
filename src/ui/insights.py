@@ -79,11 +79,16 @@ def projection_details(rows):
             val = row.get('expected_minutes')
             metrics.append(metric('Estimated minutes / GW', f'{val:.0f}' if val is not None else '—'))
         metrics.append(metric(f'{prefix} points / match', f'{form:.1f}' if form is not None else '—'))
+        dc = row.get('recent_dc_points')
+        if dc is not None:
+            metrics.append(metric('Recent defensive bonus / match', f'{dc:.2f}'))
         metrics.append(metric(f'{prefix} xGI / match', f'{xgi:.2f}' if xgi is not None else '—'))
         metrics.append(metric('Weighted next-4 avg', f"{row.get('pred_run', row['pred']):.1f}"))
         risk = "<div class='risk'>Watch minutes: recent average below 60.</div>" if mins is not None and mins < 60 else ''
         if row.get('minutes_basis') == 'playing_time_model':
             risk += "<div class='risk'>Playing-time estimates · point forecast unchanged. Probabilities are per match; estimated minutes sum the GW fixtures.</div>"
+        if dc is not None:
+            risk += "<div class='risk'>Defensive bonus: observed last-five-match average, already included in past points. The current point model has no dedicated contribution input; this is context, not an extra forecast bonus.</div>"
         players.append(f"<details class='projection-player'><summary><span><span class='role'>{role}</span>"
                        f"{text(row['name'])}<span class='fixture-badge'>{fixture_badge}</span></span>"
                        f"<span class='pts'>{row['pred']:.1f} pts +</span></summary>"

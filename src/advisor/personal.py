@@ -81,6 +81,8 @@ def _predict_from_history(season: str, raw: pd.DataFrame) -> pd.DataFrame:
             extra[field] = (field, "sum" if field == "expected_minutes" else "mean")
     if "minutes_basis" in feats:
         extra["minutes_basis"] = ("minutes_basis", "first")
+    if "roll_defensive_points_5" in feats:
+        extra["recent_dc_points"] = ("roll_defensive_points_5", "first")
     return feats.groupby(["gw", "element"]).agg(
         **extra,
         name=("name", "first"), position=("position", "first"),
@@ -502,7 +504,7 @@ def _xi_rows(df, fxmap=None):
             row["id"] = int(r["id"])
         row["signal_basis"] = r.get("signal_basis", "recent")
         row["minutes_basis"] = r.get("minutes_basis", "unavailable")
-        for key in ("recent_minutes", "recent_starts", "recent_form", "xgi", "p_play", "fixture_count", "form_weight", "minutes_p_play", "p_start", "p_sixty", "p_cameo", "expected_minutes"):
+        for key in ("recent_minutes", "recent_starts", "recent_form", "recent_dc_points", "xgi", "p_play", "fixture_count", "form_weight", "minutes_p_play", "p_start", "p_sixty", "p_cameo", "expected_minutes"):
             val = r.get(key)
             if val is not None and pd.notna(val):
                 row[key] = round(float(val), 3)

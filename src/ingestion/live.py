@@ -43,6 +43,7 @@ _HISTORY_FIELDS = [
     "expected_goals", "expected_assists", "expected_goal_involvements",
     "expected_goals_conceded", "ict_index", "influence", "creativity",
     "threat", "value", "selected", "transfers_in", "transfers_out",
+    "defensive_contribution", "clearances_blocks_interceptions", "recoveries", "tackles",
 ]
 
 

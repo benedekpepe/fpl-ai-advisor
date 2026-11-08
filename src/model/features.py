@@ -15,6 +15,7 @@ ROLL_BASES = [
     "expected_goal_involvements", "bps", "ict_index",
 ]
 ROLL_WINDOWS = [3, 5]
+CONTEXT_BASES = ["clean_sheets", "expected_goals_conceded", "defensive_contribution", "defensive_points"]
 
 POSITIONS = ["GK", "DEF", "MID", "FWD"]
 
@@ -31,6 +32,15 @@ def build_feature_frame(history: pd.DataFrame) -> pd.DataFrame:
 
     grp = df.groupby(["season", "element"], sort=False)
 
+    # Missing contribution stats stay unknown, never a fabricated zero. The
+    # 2025-26+ award is capped at two points per fixture, not per ten actions.
+    for base in CONTEXT_BASES[:-1]:
+        df[base] = pd.to_numeric(df.get(base, pd.Series(float("nan"), index=df.index)), errors="coerce")
+    threshold = df["position"].map({"DEF": 10, "MID": 12, "FWD": 12})
+    known = (df["season"] >= "2025-26") & df["defensive_contribution"].notna() & threshold.notna() & df["minutes"].notna()
+    df["defensive_points"] = (2.0 * (df["defensive_contribution"] >= threshold)).where(known)
+    grp = df.groupby(["season", "element"], sort=False)
+
     def prior_rolling(series, window):
         prior = series.shift(1)
         return prior.dropna().rolling(window, min_periods=1).mean().reindex(series.index).ffill()
@@ -41,6 +51,9 @@ def build_feature_frame(history: pd.DataFrame) -> pd.DataFrame:
             df[f"roll_{base}_{w}"] = grp[base].transform(
                 lambda s, w=w: prior_rolling(s, w)
             )
+    for base in CONTEXT_BASES:
+        for w in ROLL_WINDOWS:
+            df[f"roll_{base}_{w}"] = grp[base].transform(lambda s, w=w: prior_rolling(s, w))
 
     # Share of recent games started (nailed-on proxy).
     df["starts_rate_5"] = grp["starts"].transform(
@@ -84,6 +97,11 @@ def feature_columns() -> list[str]:
     cols += ["starts_rate_5", "games_played", "cum_ppg", "is_home", "value"]
     cols += [f"pos_{p}" for p in POSITIONS]
     return cols
+
+
+def context_columns() -> list[str]:
+    """Additional candidate-model inputs; legacy artifact columns stay stable."""
+    return [f"roll_{base}_{w}" for base in CONTEXT_BASES for w in ROLL_WINDOWS]
 
 
 TARGET = "total_points"
