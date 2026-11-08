@@ -3,6 +3,9 @@
 Run locally (with the Postgres container up and the model trained):
     streamlit run app.py
 """
+import json
+from datetime import datetime, timezone
+
 import pandas as pd
 import streamlit as st
 
@@ -570,44 +573,95 @@ def preseason_view():
                     unsafe_allow_html=True)
 
 
+def forecast_review_controls(advice=None):
+    from src.model.monitor import parse_snapshot, fetch_outcomes, evaluate_snapshot
+    from src.ingestion.fpl_client import FPLClient
+    snapshot = (advice or {}).get("tracking_snapshot")
+    with st.expander("Keep & review a forecast"):
+        st.caption("Keep the forecast before the deadline, then compare it with checked results after the gameweek. The original prediction stays unchanged.")
+        if snapshot:
+            st.download_button("Download this forecast", json.dumps(snapshot,ensure_ascii=False,indent=2),
+                               file_name=f"fpl-forecast-gw{snapshot['target_gw']}.json",
+                               mime="application/json", on_click="ignore")
+            st.caption("Keep the downloaded file: cloud-server storage may be temporary.")
+        elif advice and advice.get("tracking_error"):
+            st.caption(advice["tracking_error"])
+        uploaded = st.file_uploader("Earlier forecast · optional", type=["json"], key="forecast_review_upload", max_upload_size=10)
+        if st.button("Compare with checked results", disabled=not (uploaded or snapshot)):
+            try:
+                if uploaded and uploaded.size > 10_000_000:
+                    raise ValueError("Snapshot exceeds the 10 MB limit.")
+                saved = parse_snapshot(uploaded.getvalue()) if uploaded else snapshot
+                with st.spinner("Checking completed gameweek results…"):
+                    outcomes, completed = fetch_outcomes(saved,FPLClient())
+                    report = evaluate_snapshot(saved,outcomes,completed)
+                if report['status']=='pending':
+                    st.info(f"GW{report['target_gw']} is not fully finished and checked yet. No final score is reported.")
+                else:
+                    result = report['target_metrics']
+                    if result:
+                        columns=st.columns(3)
+                        columns[0].metric("Mean point error",f"{result['mae']:.2f}")
+                        columns[1].metric("Average bias",f"{result['bias']:+.2f}")
+                        columns[2].metric("Players scored",result['n'])
+                        st.caption("Positive bias means overprediction. Metrics describe this saved gameweek, not future accuracy.")
+                    if report['status']=='partial':
+                        st.warning("Some player results are missing. This evaluation is incomplete.")
+                    lineup=report['frozen_lineup']
+                    if lineup:
+                        st.markdown(f"**Saved team: {lineup['before']:.0f} pts · Suggested team: {lineup['after']:.0f} pts · Net: {lineup['net']:+.0f} pts after hits**")
+                        st.caption("Uses the saved XI, bench order, automatic substitutes and captain. Later manual changes are not replayed.")
+                st.download_button("Download evaluation",json.dumps(report,indent=2),
+                                   file_name=f"fpl-review-gw{report['target_gw']}.json",mime="application/json",on_click="ignore")
+            except (ValueError,KeyError,TypeError,OSError) as exc:
+                st.error(f"Could not review this snapshot: {exc}")
+
+
 def live_advice_view():
-    """In-season advice on the live season, for the upcoming (changeable) gameweek."""
+    """Live advice with retained results so downloads/uploads do not erase it."""
     from src.ingestion.live import season_started
     st.markdown("<div style='color:#8a97a6;font-size:13px;margin-bottom:6px'>"
                 "Enter your FPL Team ID — advice is generated for the upcoming "
-                "gameweek, detected automatically from the live FPL data.</div>",
-                unsafe_allow_html=True)
-    team_id = st.text_input("FPL Team ID", value="", placeholder="e.g. 1234567",
-                            help="The number in your FPL team URL: /entry/<this>/")
+                "gameweek, detected automatically from the live FPL data.</div>",unsafe_allow_html=True)
+    team_id=st.text_input("FPL Team ID",value="",placeholder="e.g. 1234567",
+                          help="The number in your FPL team URL: /entry/<this>/")
     with st.expander("Team settings · optional"):
         st.caption("Free transfers are estimated from public history. Override if your FPL account shows a different count.")
-        override_ft = st.checkbox("Set my available free transfers")
-        chosen_ft = st.number_input("Available free transfers", min_value=0, max_value=5,
-                                    value=1, step=1, disabled=not override_ft)
-    if not st.button("Get advice"):
-        return
-    if not team_id.strip().isdigit():
-        st.info("Enter your FPL Team ID above to get advice.")
-        return
-    with st.spinner("Detecting the gameweek and crunching the live numbers…"):
-        try:
-            if not season_started():
-                st.info("The season hasn't kicked off yet — switch to "
-                        "**Build from scratch** above to build your GW1 team.")
+        override_ft=st.checkbox("Set my available free transfers")
+        chosen_ft=st.number_input("Available free transfers",min_value=0,max_value=5,value=1,step=1,disabled=not override_ft)
+    submitted=st.button("Get advice")
+    request_key=(team_id.strip(),int(chosen_ft) if override_ft else None)
+    if submitted:
+        if not team_id.strip().isdigit():
+            st.info("Enter your FPL Team ID above to get advice.")
+            return
+        with st.spinner("Detecting the gameweek and crunching the live numbers…"):
+            try:
+                if not season_started():
+                    st.info("The season has not started yet. Use the squad builder for GW1.")
+                    return
+                advice=build_advice(int(team_id),ft_override=request_key[1])
+                if not advice['ok']:
+                    st.warning(advice['error'])
+                    return
+                st.session_state['live_advice_result']=(request_key,advice)
+            except Exception as exc:
+                st.error(f"Something went wrong: {exc}")
                 return
-            advice = build_advice(int(team_id), ft_override=int(chosen_ft) if override_ft else None)
-            if not advice["ok"]:
-                st.warning(advice["error"])
-            else:
-                st.markdown(render_html(advice), unsafe_allow_html=True)
-        except Exception as exc:  # noqa: BLE001
-            import traceback
-            tb = traceback.extract_tb(exc.__traceback__)
-            ours = [f for f in tb if "/src/" in f.filename or f.filename.endswith("app.py")]
-            frame = ours[-1] if ours else (tb[-1] if tb else None)
-            where = (f"  [{frame.filename.split('/')[-1]}:{frame.lineno} "
-                     f"in {frame.name}]" if frame else "")
-            st.error(f"Something went wrong: {exc}{where}")
+    cached=st.session_state.get('live_advice_result')
+    if not cached or cached[0]!=request_key:
+        forecast_review_controls()
+        return
+    advice=cached[1]
+    snapshot=advice.get('tracking_snapshot')
+    if snapshot:
+        from src.model.monitor import utc
+        if utc(snapshot['deadline'])<=datetime.now(timezone.utc):
+            st.info("This forecast's deadline has passed. Generate fresh advice for the next open gameweek.")
+            forecast_review_controls()
+            return
+    st.markdown(render_html(advice),unsafe_allow_html=True)
+    forecast_review_controls(advice)
 
 
 @st.cache_data(ttl=1800, show_spinner=False)

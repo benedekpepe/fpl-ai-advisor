@@ -21,7 +21,9 @@ POSITIONS = ["GK", "DEF", "MID", "FWD"]
 
 def build_feature_frame(history: pd.DataFrame) -> pd.DataFrame:
     """Return a frame with engineered features + the target (total_points)."""
-    df = history.copy()
+    # Historical 2024-25 data also contains Assistant Manager (AM) chip rows.
+    # They are not players eligible for a GK/DEF/MID/FWD lineup.
+    df = history[history["position"].isin(POSITIONS)].copy()
 
     # Stable chronological order within each player-season.
     df["kickoff_time"] = pd.to_datetime(df["kickoff_time"], errors="coerce", utc=True)

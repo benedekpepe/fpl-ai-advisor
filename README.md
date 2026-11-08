@@ -75,6 +75,9 @@ squad optimiser, behind a Streamlit dashboard.
   form uses only finished, FPL-checked gameweeks. The UI shows the form cutoff,
   while injuries and upcoming fixtures stay live. Both normal and fallback
   projections use the same target gameweek.
+- **Saved forecast review** — export a live recommendation before its deadline,
+  then upload it after the round to compare predictions, saved lineups and
+  transfer returns with completed, FPL-checked results.
 
 ## Screenshots
 
@@ -82,7 +85,8 @@ squad optimiser, behind a Streamlit dashboard.
 ![Recommended transfers and chip plan](docs/chips.png)
 
 These show the core dashboard layout; the current build also includes forecast
-status, lineup explanations and the validation panel described below.
+status, lineup explanations, the validation panel and saved-forecast review
+described below.
 
 ## How it works
 
@@ -139,13 +143,22 @@ artifact.
 
 | Training | Test | Model + form MAE | Simple form MAE | Model + form RMSE |
 | --- | --- | ---: | ---: | ---: |
-| 2023-24 | 2024-25 | 1.0582 | 1.1137 | 2.0892 |
-| 2024-25 | 2025-26 | 0.9932 | 1.0581 | 1.9705 |
+| 2023-24 | 2024-25 | 1.0112 | 1.0711 | 1.9595 |
+| 2024-25 | 2025-26 | 0.9932 | 1.0581 | 1.9701 |
 
 Reports: [first holdout](docs/model_validation.json),
 [second holdout](docs/model_validation_second.json). Eight variants were compared.
 No alternative consistently improves all principal error measures across both
 seasons, so production blending weights remain unchanged.
+
+The all-player averages include many inactive players with zero points. For
+players whose prior average minutes are at least 60, MAE is **2.24 points** in
+2024-25 and **2.37 points** in 2025-26. The observed-minute guide has an average
+absolute error of **23.9 / 24.2 minutes** among players with at least 30 prior
+average minutes; it is not a separately trained minutes forecast. Reports also
+break down point errors by position and playing-probability calibration.
+Assistant Manager coach rows are excluded from player training and benchmarks.
+The measured position biases do not justify a blanket position adjustment.
 
 These replace the earlier pipeline benchmark. Historical opponent-strength
 snapshots may have later revisions, and archived injury/availability news is not
@@ -172,7 +185,7 @@ fpl-ai-advisor/
 │   ├── data/               # loaders: history (db / csv), team strengths
 │   ├── db/                 # schema, connection, init
 │   ├── ingestion/          # FPL API client, historical loader, live mode
-│   ├── model/              # features, projections, validation, cold start
+│   ├── model/              # features, projections, validation, forecast review, cold start
 │   ├── optim/              # squad / XI / captain optimiser
 │   ├── advisor/            # advice assembly + CLI
 │   └── ui/                 # forecast explanations and validation panels
@@ -308,6 +321,39 @@ additional untouched season before adopting it. The UI's Model check panel repor
 this separate evaluation, not measured performance of the current deployed artifact.
 
 
+## Saved forecasts and result review
+The live view's **Keep & review a forecast** section exports the exact prediction
+and recommendation before the deadline. Keep the JSON file and upload it there
+later to compare with finished, FPL-checked results. App results survive review
+and download reruns; advice whose deadline has passed is not reused.
+
+The snapshot includes stable player IDs, timestamps, projection/rating sources,
+the model and scoring-pipeline hashes, the saved lineups and transfer IDs. It is
+checksummed to detect accidental changes, not digitally authenticated. Late
+snapshots are rejected. Only fully finished, FPL-checked rounds are evaluated;
+pending or missing player results do not silently become zero points.
+
+Capture and evaluate from the CLI:
+
+```sh
+python -m src.model.monitor capture --team-id 1234567 --directory data/forecast_logs
+python -m src.model.monitor evaluate data/forecast_logs/<snapshot>.json --output data/review.json
+```
+
+Set `FPL_FORECAST_LOG_DIR` to append snapshots automatically whenever live advice
+is generated. Use a persistent/mounted directory for that setting. The default
+cloud filesystem is temporary; no durable central store or unattended deadline
+scheduler is enabled by default. Downloaded files remain usable independently.
+The ignored `data/` directory keeps local team snapshots out of Git.
+
+Evaluation reports player errors and bias by position, single-fixture playing
+probability calibration, and the error of the observed-minute guide. The target
+week's saved lineups are scored with legal automatic substitutions, vice-captain
+fallback and hit costs. The multiweek comparison measures ownership points for
+the transferred players; it does not claim to reproduce future manual lineups or
+captain changes. Earlier live recommendations cannot be proved accurate without
+snapshots saved before their deadlines.
+
 ## Decision audit
 
 - Captain and vice-captain can be any starting position; no hidden attacker-only filter.
@@ -335,7 +381,9 @@ Rules checked against [official transfer guidance](https://www.premierleague.com
 
 Tests cover formation and budget constraints, captain choice, transfer hits and
 selling prices, chip expiry, Free Hit reversion, free-transfer rules, forecast
-cutoffs, double/blank weeks and escaped UI explanations. They use synthetic inputs
+cutoffs, double/blank weeks, escaped UI explanations, snapshot integrity,
+pre-deadline capture, incomplete results, legal automatic substitutions and
+advice retention across review reruns. They use synthetic inputs
 and mocked models/APIs, so no database, trained artifact or network is required:
 
 ```bash

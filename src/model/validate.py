@@ -73,22 +73,45 @@ def evaluate(train_raw, test_raw, train_season, test_season):
     names = list(policies) + ['form3', 'minutes_guard', 'recent5_blend', 'sample_aware']
     grouped = scored.groupby(['gw', 'element']).agg(
         actual=('total_points', 'sum'), recent_minutes=('roll_minutes_5', 'first'),
+        position=('position', 'first'), name=('name', 'first'), minutes=('minutes', 'sum'),
         **{name: (name, 'sum') for name in names})
     active = grouped[grouped.recent_minutes >= 30]
     metrics = {name: {**errors(grouped.actual, grouped[name]),
                       'active_mae': errors(active.actual, active[name])['mae']} for name in names}
     gw_metrics = {str(gw): {name: errors(g.actual, g[name])['mae'] for name in names}
                   for gw, g in grouped.groupby(level='gw')}
+    def segment_metrics(frame):
+        result = errors(frame.actual, frame.current_blend)
+        result.update(n=len(frame), bias=round(float((frame.current_blend-frame.actual).mean()),4))
+        return result
+    by_position = {str(pos): segment_metrics(g) for pos,g in grouped.groupby('position')}
+    minute_bands = pd.cut(grouped.recent_minutes, [-1,30,60,float('inf')], right=False,
+                          labels=['under_30','30_to_59','60_plus'])
+    by_minutes = {str(band): segment_metrics(g) for band,g in grouped.groupby(minute_bands,observed=True)}
+    calibration = []
+    bins = pd.cut(scored.p_play, [0,.2,.4,.6,.8,1.],include_lowest=True)
+    for band,g in scored.groupby(bins,observed=True):
+        calibration.append(dict(band=str(band),n=len(g), predicted=round(float(g.p_play.mean()),4),
+                                observed=round(float((g.minutes>0).mean()),4)))
+    player_bias = grouped.groupby(level='element').agg(name=('name','first'), position=('position','first'),
+        n=('actual','size'), actual=('actual','mean'), predicted=('current_blend','mean'),minutes=('minutes','mean'))
+    player_bias = player_bias[(player_bias.n>=10)&(player_bias.minutes>=30)].copy()
+    player_bias['bias']=player_bias.predicted-player_bias.actual
+    bias_examples = {label: rows.reset_index().round(4).to_dict('records')
+        for label,rows in [('over',player_bias.nlargest(8,'bias')),('under',player_bias.nsmallest(8,'bias'))]}
     minute_rows = scored.dropna(subset=['roll_minutes_5', 'minutes'])
     return {
         'train_season': train_season, 'test_season': test_season,
         'created_utc': datetime.now(timezone.utc).isoformat(),
         'train_rows': len(train), 'test_player_gameweeks': len(grouped),
         'active_player_gameweeks': len(active), 'metrics': metrics, 'gameweeks': gw_metrics,
+        'segments': {'positions':by_position, 'recent_minutes':by_minutes},
+        'play_calibration': calibration, 'player_bias_examples':bias_examples,
         'minutes': {'guide_mae': errors(minute_rows.minutes, minute_rows.roll_minutes_5)['mae'],
+                    'guide_active_mae': errors(minute_rows.loc[minute_rows.roll_minutes_5>=30,'minutes'],minute_rows.loc[minute_rows.roll_minutes_5>=30,'roll_minutes_5'])['mae'],
                     'play_brier': round(float(np.mean((scored.p_play-(scored.minutes>0).astype(int))**2)),4)},
         'method': 'Train on an earlier season; evaluate later season with only prior observed form. All matches in a double share pre-GW features. Metrics aggregate points per player/gameweek. Active cohort: prior average minutes >=30.',
-        'limitations': ['Historical opponent strengths are season-level snapshots and may reflect later revisions.', 'Historical injury news and deadline-time availability snapshots are not replayed.', 'Evaluation model is separate from the deployed artifact; one holdout season is insufficient for selecting new production weights.', 'Metrics evaluate points per player/gameweek, not transfer hits or whole-season manager rank.'],
+        'limitations': ['Historical opponent strengths are season-level snapshots and may reflect later revisions.', 'Historical Assistant Manager chip rows are excluded; only GK/DEF/MID/FWD players are evaluated.', 'Historical injury news and deadline-time availability snapshots are not replayed.', 'Evaluation model is separate from the deployed artifact; one holdout season is insufficient for selecting new production weights.', 'Metrics evaluate points per player/gameweek, not transfer hits or whole-season manager rank.'],
         'decision': 'Exploratory comparison only. Keep deployed weights unchanged; confirm on another untouched season before tuning.',
         'sources': [MERGED_GW_URL.format(season=s) for s in [train_season, test_season]],
     }

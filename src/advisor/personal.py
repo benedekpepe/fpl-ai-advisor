@@ -14,6 +14,7 @@ Run:  python -m src.advisor.personal 3136812 15
 """
 import sys
 import logging
+import os
 from functools import lru_cache
 
 import joblib
@@ -488,6 +489,8 @@ def _xi_rows(df, fxmap=None):
                "pred": round(float(r["pred"]), 2),
                "actual": (None if pd.isna(r.get("actual")) else int(round(r["actual"]))),
                "captain": bool(r["captain"]), "vice": False, "role": role}
+        if "id" in r and pd.notna(r["id"]):
+            row["id"] = int(r["id"])
         row["signal_basis"] = r.get("signal_basis", "recent")
         for key in ("recent_minutes", "recent_starts", "recent_form", "xgi", "p_play", "fixture_count", "form_weight"):
             val = r.get(key)
@@ -611,6 +614,7 @@ def build_advice(team_id, gw=None, ft_override=None, picks_gw=None):
     used_chips = chips_used(history, gw)
 
     live_raw = None
+    live_bootstrap = {}
     form_gw = None
     projection_source = "season_model"
     projection_reason = None
@@ -635,7 +639,8 @@ def build_advice(team_id, gw=None, ft_override=None, picks_gw=None):
             from src.ingestion.fpl_client import FPLClient
             from src.model.preseason import fixture_ticker
             _c = FPLClient()
-            live_teams = _c.get_bootstrap_static()["teams"]
+            live_bootstrap = _c.get_bootstrap_static()
+            live_teams = live_bootstrap["teams"]
             fxmap = fixture_ticker(_c.get_fixtures(), live_teams, gw, 4)
             # Normal live predictions use club codes; seeded predictions use IDs.
             fxmap.update({t["short_name"]: fxmap.get(t["id"], []) for t in live_teams})
@@ -689,6 +694,8 @@ def build_advice(team_id, gw=None, ft_override=None, picks_gw=None):
             preds_all = preds_all.copy()
             factors = preds_all["id"].map(live_availability).fillna(1.0)
             preds_all["pred"] = preds_all["pred"] * factors
+            if "p_play" in preds_all:
+                preds_all["p_play"] = preds_all["p_play"] * factors
             preds_all = preds_all[(factors > 0) | preds_all["id"].isin(ids)]
         pool["pred"] = pool["pred"] * mult
         if "p_play" in pool:
@@ -810,7 +817,7 @@ def build_advice(team_id, gw=None, ft_override=None, picks_gw=None):
             op = [i for i in outs if pos.get(i) == p]
             ip = [i for i in ins if pos.get(i) == p]
             for o, i in zip(op, ip):
-                moves.append({"out": nm.get(o, o), "in": nm.get(i, i),
+                moves.append({"out": nm.get(o, o), "in": nm.get(i, i), "out_id": int(o), "in_id": int(i),
                               "out_price": int(sell.get(o, prc.get(o, 0))), "in_price": int(prc.get(i, 0))})
         transfer = {"verdict": "CHIP", "moves": moves,
                     "text": f"Playing {CHIP_LABEL[rec_chip]} this week — normal transfers don't apply."}
@@ -824,7 +831,7 @@ def build_advice(team_id, gw=None, ft_override=None, picks_gw=None):
                             f"~{BANK_THRESHOLD:.0f}-pt bar), so bank the transfer for flexibility.{note}"}
     else:
         _, new_sq, outs, ins = options[best_k]
-        moves = [{"out": nm.get(o, o), "in": nm.get(i, i),
+        moves = [{"out": nm.get(o, o), "in": nm.get(i, i), "out_id": int(o), "in_id": int(i),
                   "out_price": int(sell.get(o, prc.get(o, 0))), "in_price": int(prc.get(i, 0))} for o, i in
                  zip(sorted(outs, key=lambda i: ORDER.get(pos.get(i), 9)),
                      sorted(ins, key=lambda i: ORDER.get(pos.get(i), 9)))]
@@ -892,7 +899,7 @@ def build_advice(team_id, gw=None, ft_override=None, picks_gw=None):
     # same squad, so the picks, the (C) badge and the summary never disagree.
     captain_options = _cap_options(final_df)
 
-    return {
+    result = {
         "ok": True, "team_id": int(team_id), "gw": int(gw), "season": SEASON,
         "form_gw": form_gw,
         "projection": {"source": projection_source, "reason": projection_reason,
@@ -914,6 +921,20 @@ def build_advice(team_id, gw=None, ft_override=None, picks_gw=None):
                     "chip": CHIP_LABEL[rec_chip] if rec_chip else "none — hold",
                     "triple": rec_chip == "3xc"},
     }
+    if DATA_SOURCE == "live":
+        from src.model.monitor import create_snapshot, save_snapshot
+        try:
+            deadline = next(e["deadline_time"] for e in live_bootstrap.get("events", []) if e["id"] == gw)
+            capture = pd.concat([preds_all[preds_all["gw"] != gw], pool], ignore_index=True)
+            snapshot = create_snapshot(result, capture, deadline, model_path=MODEL_PATH)
+            result["tracking_snapshot"] = snapshot
+            if os.getenv("FPL_FORECAST_LOG_DIR"):
+                save_snapshot(snapshot, os.environ["FPL_FORECAST_LOG_DIR"])
+        except (StopIteration, OSError, ValueError, KeyError):
+            LOGGER.exception("Forecast snapshot export unavailable for GW%s", gw)
+            result["tracking_error"] = "A pre-deadline forecast snapshot could not be saved for this run."
+    return result
+
 
 
 def advise(team_id, gw, ft_override=None):

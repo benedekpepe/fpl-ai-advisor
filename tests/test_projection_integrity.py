@@ -115,3 +115,11 @@ def test_validation_rejects_training_on_test_or_future_season():
         evaluate(pd.DataFrame(), pd.DataFrame(), '2024-25', '2024-25')
     with pytest.raises(ValueError, match='precede'):
         evaluate(pd.DataFrame(), pd.DataFrame(), '2025-26', '2024-25')
+
+
+def test_historical_assistant_manager_rows_are_not_player_forecasts():
+    data=history()
+    coach=data.copy();coach['position']='AM';coach['element']=999
+    result=build_feature_frame(pd.concat([data,coach],ignore_index=True))
+    assert set(result.position)=={'MID'}
+    assert 999 not in set(result.element)

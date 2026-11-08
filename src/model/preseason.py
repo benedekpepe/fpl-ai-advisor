@@ -263,6 +263,8 @@ def preseason_predictions(client: FPLClient = None,
         week = frame.drop_duplicates("id")[["id", "name", "position", "team", "value"]].rename(columns={"value":"price"}).copy()
         week["gw"] = gw
         week["pred"] = week["id"].map(totals)
+        for key in ("fixture_count", "p_play", "recent_minutes"):
+            week[key] = week["id"].map(frame.groupby("id")[key].mean())
         weekly.append(week)
         for pid, pv in totals.items():
             wsum[pid] = wsum.get(pid, 0.0) + w * pv

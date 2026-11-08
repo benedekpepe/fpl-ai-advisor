@@ -1,49 +1,49 @@
 {
   "train_season": "2023-24",
   "test_season": "2024-25",
-  "created_utc": "2026-11-07T02:31:35.075469+00:00",
+  "created_utc": "2026-11-08T21:35:09.091312+00:00",
   "train_rows": 28850,
-  "test_player_gameweeks": 26427,
+  "test_player_gameweeks": 26135,
   "active_player_gameweeks": 9697,
   "metrics": {
     "current_blend": {
-      "mae": 1.0582,
-      "rmse": 2.0892,
+      "mae": 1.0112,
+      "rmse": 1.9595,
       "active_mae": 2.0355
     },
     "model_only": {
-      "mae": 1.0674,
-      "rmse": 2.1284,
+      "mae": 1.0159,
+      "rmse": 1.9762,
       "active_mae": 2.0422
     },
     "lighter_blend": {
-      "mae": 1.0608,
-      "rmse": 2.1053,
+      "mae": 1.0119,
+      "rmse": 1.9647,
       "active_mae": 2.0351
     },
     "stronger_blend": {
-      "mae": 1.0591,
-      "rmse": 2.0802,
+      "mae": 1.0137,
+      "rmse": 1.9607,
       "active_mae": 2.0426
     },
     "form3": {
-      "mae": 1.1137,
-      "rmse": 2.2629,
+      "mae": 1.0711,
+      "rmse": 2.1773,
       "active_mae": 2.3018
     },
     "minutes_guard": {
-      "mae": 1.0069,
-      "rmse": 2.1456,
+      "mae": 0.9535,
+      "rmse": 1.9893,
       "active_mae": 1.999
     },
     "recent5_blend": {
-      "mae": 1.0471,
-      "rmse": 2.1015,
+      "mae": 0.9997,
+      "rmse": 1.9717,
       "active_mae": 2.0561
     },
     "sample_aware": {
-      "mae": 1.0585,
-      "rmse": 2.0916,
+      "mae": 1.0115,
+      "rmse": 1.9599,
       "active_mae": 2.035
     }
   },
@@ -269,166 +269,414 @@
       "sample_aware": 0.9642
     },
     "24": {
-      "current_blend": 1.2429,
-      "model_only": 1.2509,
-      "lighter_blend": 1.2444,
-      "stronger_blend": 1.242,
-      "form3": 1.4134,
-      "minutes_guard": 1.1701,
-      "recent5_blend": 1.2237,
-      "sample_aware": 1.2437
+      "current_blend": 1.0939,
+      "model_only": 1.0972,
+      "lighter_blend": 1.0951,
+      "stronger_blend": 1.0932,
+      "form3": 1.2154,
+      "minutes_guard": 1.0141,
+      "recent5_blend": 1.0741,
+      "sample_aware": 1.0934
     },
     "25": {
-      "current_blend": 1.1481,
-      "model_only": 1.1631,
-      "lighter_blend": 1.1535,
-      "stronger_blend": 1.1461,
-      "form3": 1.2019,
-      "minutes_guard": 1.1114,
-      "recent5_blend": 1.1463,
-      "sample_aware": 1.1482
+      "current_blend": 1.0154,
+      "model_only": 1.0194,
+      "lighter_blend": 1.0168,
+      "stronger_blend": 1.0154,
+      "form3": 1.0701,
+      "minutes_guard": 0.9639,
+      "recent5_blend": 1.0135,
+      "sample_aware": 1.0152
     },
     "26": {
-      "current_blend": 1.1895,
-      "model_only": 1.199,
-      "lighter_blend": 1.1938,
-      "stronger_blend": 1.187,
-      "form3": 1.236,
-      "minutes_guard": 1.1552,
-      "recent5_blend": 1.179,
-      "sample_aware": 1.1904
+      "current_blend": 1.0544,
+      "model_only": 1.0582,
+      "lighter_blend": 1.0559,
+      "stronger_blend": 1.0543,
+      "form3": 1.0986,
+      "minutes_guard": 1.0106,
+      "recent5_blend": 1.0435,
+      "sample_aware": 1.0553
     },
     "27": {
-      "current_blend": 1.0011,
-      "model_only": 1.0054,
-      "lighter_blend": 1.0016,
-      "stronger_blend": 1.0035,
-      "form3": 1.0951,
-      "minutes_guard": 0.9637,
-      "recent5_blend": 0.9783,
-      "sample_aware": 1.0014
+      "current_blend": 0.9051,
+      "model_only": 0.8955,
+      "lighter_blend": 0.8998,
+      "stronger_blend": 0.9119,
+      "form3": 1.0033,
+      "minutes_guard": 0.8519,
+      "recent5_blend": 0.8816,
+      "sample_aware": 0.9054
     },
     "28": {
-      "current_blend": 0.931,
-      "model_only": 0.9427,
-      "lighter_blend": 0.9355,
-      "stronger_blend": 0.9274,
-      "form3": 1.0283,
-      "minutes_guard": 0.8948,
-      "recent5_blend": 0.9076,
-      "sample_aware": 0.9311
+      "current_blend": 0.8422,
+      "model_only": 0.8428,
+      "lighter_blend": 0.8419,
+      "stronger_blend": 0.8432,
+      "form3": 0.947,
+      "minutes_guard": 0.7922,
+      "recent5_blend": 0.8177,
+      "sample_aware": 0.8422
     },
     "29": {
-      "current_blend": 0.98,
-      "model_only": 0.9942,
-      "lighter_blend": 0.9864,
-      "stronger_blend": 0.9752,
-      "form3": 0.9948,
-      "minutes_guard": 0.937,
-      "recent5_blend": 0.9428,
-      "sample_aware": 0.9801
+      "current_blend": 0.903,
+      "model_only": 0.9044,
+      "lighter_blend": 0.9032,
+      "stronger_blend": 0.9038,
+      "form3": 0.9363,
+      "minutes_guard": 0.8417,
+      "recent5_blend": 0.8656,
+      "sample_aware": 0.9031
     },
     "30": {
-      "current_blend": 1.0565,
-      "model_only": 1.0695,
-      "lighter_blend": 1.0616,
-      "stronger_blend": 1.0539,
-      "form3": 1.0853,
-      "minutes_guard": 1.0207,
-      "recent5_blend": 1.0433,
-      "sample_aware": 1.0565
+      "current_blend": 0.958,
+      "model_only": 0.9658,
+      "lighter_blend": 0.9616,
+      "stronger_blend": 0.956,
+      "form3": 0.9861,
+      "minutes_guard": 0.9119,
+      "recent5_blend": 0.9443,
+      "sample_aware": 0.958
     },
     "31": {
-      "current_blend": 1.0361,
-      "model_only": 1.0482,
-      "lighter_blend": 1.0411,
-      "stronger_blend": 1.0329,
-      "form3": 1.0641,
-      "minutes_guard": 1.008,
-      "recent5_blend": 1.0168,
-      "sample_aware": 1.0361
+      "current_blend": 0.9297,
+      "model_only": 0.9243,
+      "lighter_blend": 0.9268,
+      "stronger_blend": 0.9332,
+      "form3": 0.9745,
+      "minutes_guard": 0.8778,
+      "recent5_blend": 0.908,
+      "sample_aware": 0.9297
     },
     "32": {
-      "current_blend": 1.1613,
-      "model_only": 1.1648,
-      "lighter_blend": 1.1611,
-      "stronger_blend": 1.1647,
-      "form3": 1.1511,
-      "minutes_guard": 1.1022,
-      "recent5_blend": 1.1471,
-      "sample_aware": 1.1613
+      "current_blend": 1.0331,
+      "model_only": 1.0252,
+      "lighter_blend": 1.0287,
+      "stronger_blend": 1.0398,
+      "form3": 1.0518,
+      "minutes_guard": 0.9567,
+      "recent5_blend": 1.016,
+      "sample_aware": 1.033
     },
     "33": {
-      "current_blend": 1.188,
-      "model_only": 1.2054,
-      "lighter_blend": 1.1952,
-      "stronger_blend": 1.1822,
-      "form3": 1.2157,
-      "minutes_guard": 1.134,
-      "recent5_blend": 1.1884,
-      "sample_aware": 1.1879
+      "current_blend": 1.0871,
+      "model_only": 1.0898,
+      "lighter_blend": 1.0883,
+      "stronger_blend": 1.0867,
+      "form3": 1.1412,
+      "minutes_guard": 1.0125,
+      "recent5_blend": 1.085,
+      "sample_aware": 1.087
     },
     "34": {
-      "current_blend": 1.0154,
-      "model_only": 1.0306,
-      "lighter_blend": 1.0221,
-      "stronger_blend": 1.0106,
-      "form3": 0.9834,
-      "minutes_guard": 0.9644,
-      "recent5_blend": 0.9912,
-      "sample_aware": 1.0154
+      "current_blend": 0.9079,
+      "model_only": 0.9134,
+      "lighter_blend": 0.9098,
+      "stronger_blend": 0.9068,
+      "form3": 0.9061,
+      "minutes_guard": 0.8411,
+      "recent5_blend": 0.8814,
+      "sample_aware": 0.9079
     },
     "35": {
-      "current_blend": 0.9885,
-      "model_only": 0.9992,
-      "lighter_blend": 0.9929,
-      "stronger_blend": 0.9858,
-      "form3": 1.0388,
-      "minutes_guard": 0.9278,
-      "recent5_blend": 0.9834,
-      "sample_aware": 0.9885
+      "current_blend": 0.8895,
+      "model_only": 0.8887,
+      "lighter_blend": 0.8889,
+      "stronger_blend": 0.8909,
+      "form3": 0.9684,
+      "minutes_guard": 0.8115,
+      "recent5_blend": 0.8836,
+      "sample_aware": 0.8895
     },
     "36": {
-      "current_blend": 1.106,
-      "model_only": 1.1217,
-      "lighter_blend": 1.1131,
-      "stronger_blend": 1.0996,
-      "form3": 1.0691,
-      "minutes_guard": 1.0493,
-      "recent5_blend": 1.0927,
-      "sample_aware": 1.106
+      "current_blend": 1.0089,
+      "model_only": 1.0172,
+      "lighter_blend": 1.0128,
+      "stronger_blend": 1.0057,
+      "form3": 0.9842,
+      "minutes_guard": 0.9414,
+      "recent5_blend": 0.9958,
+      "sample_aware": 1.0089
     },
     "37": {
-      "current_blend": 1.0653,
-      "model_only": 1.0675,
-      "lighter_blend": 1.0652,
-      "stronger_blend": 1.0668,
-      "form3": 1.082,
-      "minutes_guard": 1.0185,
-      "recent5_blend": 1.0286,
-      "sample_aware": 1.0653
+      "current_blend": 0.9682,
+      "model_only": 0.959,
+      "lighter_blend": 0.9629,
+      "stronger_blend": 0.9742,
+      "form3": 0.9949,
+      "minutes_guard": 0.9072,
+      "recent5_blend": 0.9312,
+      "sample_aware": 0.9682
     },
     "38": {
-      "current_blend": 1.059,
-      "model_only": 1.068,
-      "lighter_blend": 1.0629,
-      "stronger_blend": 1.0567,
-      "form3": 1.0745,
-      "minutes_guard": 1.0249,
-      "recent5_blend": 1.0338,
-      "sample_aware": 1.059
+      "current_blend": 0.9437,
+      "model_only": 0.9428,
+      "lighter_blend": 0.9426,
+      "stronger_blend": 0.9454,
+      "form3": 0.9761,
+      "minutes_guard": 0.8965,
+      "recent5_blend": 0.9167,
+      "sample_aware": 0.9437
     }
   },
+  "segments": {
+    "positions": {
+      "DEF": {
+        "mae": 1.0087,
+        "rmse": 1.8698,
+        "n": 8756,
+        "bias": -0.0143
+      },
+      "FWD": {
+        "mae": 1.1768,
+        "rmse": 2.2474,
+        "n": 2897,
+        "bias": 0.0205
+      },
+      "GK": {
+        "mae": 0.7534,
+        "rmse": 1.6447,
+        "n": 2745,
+        "bias": -0.009
+      },
+      "MID": {
+        "mae": 1.0325,
+        "rmse": 2.0155,
+        "n": 11737,
+        "bias": 0.027
+      }
+    },
+    "recent_minutes": {
+      "under_30": {
+        "mae": 0.407,
+        "rmse": 1.0781,
+        "n": 16438,
+        "bias": 0.0242
+      },
+      "30_to_59": {
+        "mae": 1.6554,
+        "rmse": 2.457,
+        "n": 3394,
+        "bias": 0.0234
+      },
+      "60_plus": {
+        "mae": 2.2402,
+        "rmse": 3.1047,
+        "n": 6303,
+        "bias": -0.0398
+      }
+    }
+  },
+  "play_calibration": [
+    {
+      "band": "(-0.001, 0.2]",
+      "n": 11981,
+      "predicted": 0.044,
+      "observed": 0.047
+    },
+    {
+      "band": "(0.2, 0.4]",
+      "n": 1599,
+      "predicted": 0.2888,
+      "observed": 0.2827
+    },
+    {
+      "band": "(0.4, 0.6]",
+      "n": 2282,
+      "predicted": 0.5089,
+      "observed": 0.5228
+    },
+    {
+      "band": "(0.6, 0.8]",
+      "n": 3408,
+      "predicted": 0.7083,
+      "observed": 0.716
+    },
+    {
+      "band": "(0.8, 1.0]",
+      "n": 7227,
+      "predicted": 0.9159,
+      "observed": 0.9098
+    }
+  ],
+  "player_bias_examples": {
+    "over": [
+      {
+        "element": 345,
+        "name": "Kevin De Bruyne",
+        "position": "MID",
+        "n": 36,
+        "actual": 3.0833,
+        "predicted": 4.6611,
+        "minutes": 44.5556,
+        "bias": 1.5777
+      },
+      {
+        "element": 503,
+        "name": "Son Heung-min",
+        "position": "MID",
+        "n": 37,
+        "actual": 3.4324,
+        "predicted": 4.8717,
+        "minutes": 54.4865,
+        "bias": 1.4393
+      },
+      {
+        "element": 4,
+        "name": "Kai Havertz",
+        "position": "FWD",
+        "n": 36,
+        "actual": 2.3611,
+        "predicted": 3.5579,
+        "minutes": 49.5,
+        "bias": 1.1968
+      },
+      {
+        "element": 351,
+        "name": "Erling Haaland",
+        "position": "FWD",
+        "n": 36,
+        "actual": 4.8333,
+        "predicted": 5.9984,
+        "minutes": 73.5,
+        "bias": 1.1651
+      },
+      {
+        "element": 17,
+        "name": "Bukayo Saka",
+        "position": "MID",
+        "n": 36,
+        "actual": 3.1944,
+        "predicted": 4.3334,
+        "minutes": 45.6944,
+        "bias": 1.139
+      },
+      {
+        "element": 764,
+        "name": "Alex Palmer",
+        "position": "GK",
+        "n": 13,
+        "actual": 1.3846,
+        "predicted": 2.4383,
+        "minutes": 83.0769,
+        "bias": 1.0537
+      },
+      {
+        "element": 348,
+        "name": "Phil Foden",
+        "position": "MID",
+        "n": 36,
+        "actual": 2.8889,
+        "predicted": 3.8427,
+        "minutes": 47.9444,
+        "bias": 0.9538
+      },
+      {
+        "element": 527,
+        "name": "Lucas Tolentino Coelho de Lima",
+        "position": "MID",
+        "n": 37,
+        "actual": 2.0,
+        "predicted": 2.9413,
+        "minutes": 62.1892,
+        "bias": 0.9413
+      }
+    ],
+    "under": [
+      {
+        "element": 328,
+        "name": "Mohamed Salah",
+        "position": "MID",
+        "n": 35,
+        "actual": 9.4286,
+        "predicted": 6.488,
+        "minutes": 93.8286,
+        "bias": -2.9406
+      },
+      {
+        "element": 402,
+        "name": "Jacob Murphy",
+        "position": "MID",
+        "n": 36,
+        "actual": 4.3889,
+        "predicted": 3.0246,
+        "minutes": 64.6389,
+        "bias": -1.3643
+      },
+      {
+        "element": 755,
+        "name": "Omar Marmoush",
+        "position": "FWD",
+        "n": 14,
+        "actual": 5.0714,
+        "predicted": 3.7128,
+        "minutes": 78.6429,
+        "bias": -1.3586
+      },
+      {
+        "element": 99,
+        "name": "Bryan Mbeumo",
+        "position": "MID",
+        "n": 37,
+        "actual": 6.1351,
+        "predicted": 4.836,
+        "minutes": 89.8919,
+        "bias": -1.2992
+      },
+      {
+        "element": 235,
+        "name": "Jordan Pickford",
+        "position": "GK",
+        "n": 36,
+        "actual": 4.3611,
+        "predicted": 3.0984,
+        "minutes": 92.5,
+        "bias": -1.2627
+      },
+      {
+        "element": 541,
+        "name": "Matheus Santos Carneiro Da Cunha",
+        "position": "FWD",
+        "n": 37,
+        "actual": 4.7838,
+        "predicted": 3.5425,
+        "minutes": 69.2703,
+        "bias": -1.2413
+      },
+      {
+        "element": 514,
+        "name": "Jarrod Bowen",
+        "position": "MID",
+        "n": 37,
+        "actual": 5.1622,
+        "predicted": 3.9624,
+        "minutes": 78.4324,
+        "bias": -1.1998
+      },
+      {
+        "element": 573,
+        "name": "Nikola Milenkovi\u0107",
+        "position": "DEF",
+        "n": 37,
+        "actual": 3.9189,
+        "predicted": 2.7451,
+        "minutes": 90.0,
+        "bias": -1.1739
+      }
+    ]
+  },
   "minutes": {
-    "guide_mae": 13.1776,
-    "play_brier": 0.1
+    "guide_mae": 13.3278,
+    "play_brier": 0.1001,
+    "guide_active_mae": 23.9473
   },
   "method": "Train on an earlier season; evaluate later season with only prior observed form. All matches in a double share pre-GW features. Metrics aggregate points per player/gameweek. Active cohort: prior average minutes >=30.",
   "limitations": [
     "Historical opponent strengths are season-level snapshots and may reflect later revisions.",
     "Historical injury news and deadline-time availability snapshots are not replayed.",
     "Evaluation model is separate from the deployed artifact; one holdout season is insufficient for selecting new production weights.",
-    "Metrics evaluate points per player/gameweek, not transfer hits or whole-season manager rank."
+    "Metrics evaluate points per player/gameweek, not transfer hits or whole-season manager rank.",
+    "Historical Assistant Manager chip rows are excluded; only GK/DEF/MID/FWD players are evaluated."
   ],
   "decision": "Exploratory comparison only. Keep deployed weights unchanged; confirm on another untouched season before tuning.",
   "sources": [
