@@ -16,6 +16,7 @@ def test_live_advice_survives_rerun_and_changing_settings_invalidates_it(monkeyp
     script=tmp_path/'review_app.py'
     script.write_text('import app\napp.live_advice_view()\n',encoding='utf-8')
     at=AppTest.from_file(str(script)).run()
+    assert not at.exception
     at.text_input[0].set_value('2942747').run()
     next(button for button in at.button if button.label=='Get advice').click().run()
     assert not at.exception
@@ -27,3 +28,15 @@ def test_live_advice_survives_rerun_and_changing_settings_invalidates_it(monkeyp
     at.checkbox[0].set_value(True).run()
     assert not any('Saved advice remains visible' in element.value for element in at.markdown)
     assert at.session_state['test_build_calls']==1
+
+
+def test_forecast_review_initial_screen_renders_without_advice(monkeypatch,tmp_path):
+    import tempfile
+    monkeypatch.setattr(tempfile,'tempdir',str(tmp_path))
+    from streamlit.testing.v1 import AppTest
+    script=tmp_path/'initial_review.py'
+    script.write_text('import app\napp.forecast_review_controls()\n',encoding='utf-8')
+    at=AppTest.from_file(str(script)).run()
+    assert not at.exception
+    compare=next(button for button in at.button if button.label=='Compare with checked results')
+    assert compare.disabled

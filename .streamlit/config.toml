@@ -8,3 +8,7 @@ textColor = "#e8edf2"
 [client]
 # Hide the top-right Streamlit toolbar (menu / dev options) on the public demo.
 toolbarMode = "minimal"
+
+[server]
+# Streamlit 1.51 supports upload limits here, not as a file_uploader argument.
+maxUploadSize = 10

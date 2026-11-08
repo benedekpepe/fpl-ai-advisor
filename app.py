@@ -596,7 +596,8 @@ def forecast_review_controls(advice=None):
             st.caption("Keep the downloaded file: cloud-server storage may be temporary.")
         elif advice and advice.get("tracking_error"):
             st.caption(advice["tracking_error"])
-        uploaded = st.file_uploader("Earlier forecast · optional", type=["json"], key="forecast_review_upload", max_upload_size=10)
+        uploaded = st.file_uploader("Earlier forecast · optional", type=["json"], key="forecast_review_upload",
+                                    help="Upload a saved JSON forecast, up to 10 MB.")
         if st.button("Compare with checked results", disabled=not (uploaded or snapshot)):
             try:
                 if uploaded and uploaded.size > 10_000_000:
