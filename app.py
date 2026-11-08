@@ -587,6 +587,8 @@ def forecast_review_controls(advice=None):
     snapshot = (advice or {}).get("tracking_snapshot")
     with st.expander("Keep & review a forecast"):
         st.caption("Keep the forecast before the deadline, then compare it with checked results after the gameweek. The original prediction stays unchanged.")
+        st.markdown("[Automatic archive · GitHub Actions](https://github.com/benedekpepe/fpl-ai-advisor/actions/workflows/forecast-monitor.yml)")
+        st.caption("When enabled on GitHub: scheduled snapshots for the configured team, rolling 90-day storage. Download the latest forecast-ledger artifact and upload a snapshot below. This does not archive every visitor's team.")
         if snapshot:
             st.download_button("Download this forecast", json.dumps(snapshot,ensure_ascii=False,indent=2),
                                file_name=f"fpl-forecast-gw{snapshot['target_gw']}.json",

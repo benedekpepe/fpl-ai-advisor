@@ -65,15 +65,25 @@ def projection_details(rows):
         mins = row.get('recent_minutes')
         starts = row.get('recent_starts')
         p_play = row.get('p_play')
+        if row.get('minutes_basis') == 'playing_time_model':
+            p_play = row.get('minutes_p_play', p_play)
         form = row.get('recent_form')
         xgi = row.get('xgi')
         metrics.append(metric(f'{prefix} minutes / match', f'{mins:.0f}' if mins is not None else '—'))
         metrics.append(metric(f'{prefix} starts', f'{starts*100:.0f}%' if starts is not None else '—'))
         metrics.append(metric('Chance of minutes / match', f'{p_play*100:.0f}%' if p_play is not None else '—'))
+        if row.get('minutes_basis') == 'playing_time_model':
+            for label, key in [('Start / match', 'p_start'), ('60+ min / match', 'p_sixty'), ('Sub appearance / match', 'p_cameo')]:
+                val = row.get(key)
+                metrics.append(metric(label, f'{val*100:.0f}%' if val is not None else '—'))
+            val = row.get('expected_minutes')
+            metrics.append(metric('Estimated minutes / GW', f'{val:.0f}' if val is not None else '—'))
         metrics.append(metric(f'{prefix} points / match', f'{form:.1f}' if form is not None else '—'))
         metrics.append(metric(f'{prefix} xGI / match', f'{xgi:.2f}' if xgi is not None else '—'))
         metrics.append(metric('Weighted next-4 avg', f"{row.get('pred_run', row['pred']):.1f}"))
         risk = "<div class='risk'>Watch minutes: recent average below 60.</div>" if mins is not None and mins < 60 else ''
+        if row.get('minutes_basis') == 'playing_time_model':
+            risk += "<div class='risk'>Playing-time estimates · point forecast unchanged. Probabilities are per match; estimated minutes sum the GW fixtures.</div>"
         players.append(f"<details class='projection-player'><summary><span><span class='role'>{role}</span>"
                        f"{text(row['name'])}<span class='fixture-badge'>{fixture_badge}</span></span>"
                        f"<span class='pts'>{row['pred']:.1f} pts +</span></summary>"
@@ -95,7 +105,7 @@ def lineup_insights(advice):
             "Opposing players can both start. Comparisons below are legal one-player swaps, before captain bonus.</p>"
             f"<div class='insight-calls'>{''.join(calls)}</div><div class='insight-title'>Behind each projection</div>"
             "<p class='insight-note'>Tap a player for details. Recent minutes, starts and xGI describe observed form; "
-            "seeded estimates use season-average form. These are not a calibrated prediction of starting. Chance of minutes is modelled per match. "
+            "seeded estimates use season-average form. Observed signals do not predict starting. Where available, the separate playing-time model shows match probabilities and estimated minutes, calibrated on an earlier season. Without it, chance of minutes comes from the point model. "
             "These are supporting signals, not a causal breakdown of the score.</p>"
             f"<div class='projection-list'>{projection_details(advice['current_xi'])}</div></div></details>")
 

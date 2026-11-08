@@ -47,6 +47,13 @@ def build_feature_frame(history: pd.DataFrame) -> pd.DataFrame:
         lambda s: prior_rolling(s, 5)
     )
 
+    # Minutes-state rates are used only by the separate playing-time model.
+    df["sixty_observed"] = (df["minutes"] >= 60).astype(float).where(df["minutes"].notna())
+    df["cameo_observed"] = ((df["minutes"] > 0) & (df["starts"] == 0)).astype(float).where(df["minutes"].notna())
+    for label in ("sixty", "cameo"):
+        df[f"{label}_rate_5"] = df.groupby(["season", "element"], sort=False)[f"{label}_observed"].transform(
+            lambda s: prior_rolling(s, 5))
+
     # Season-to-date signals.
     df["games_played"] = grp["minutes"].transform(
         lambda s: s.notna().astype(int).cumsum().shift(1, fill_value=0))
@@ -55,7 +62,7 @@ def build_feature_frame(history: pd.DataFrame) -> pd.DataFrame:
     )
 
     # A second match in a double gameweek must not see the first match's result.
-    form_cols = [c for c in df if c.startswith("roll_")] + ["starts_rate_5", "games_played", "cum_ppg"]
+    form_cols = [c for c in df if c.startswith("roll_")] + ["starts_rate_5", "games_played", "cum_ppg", "sixty_rate_5", "cameo_rate_5"]
     df[form_cols] = df.groupby(["season", "element", "gw"], sort=False)[form_cols].transform(
         lambda s: s.iloc[0])
 

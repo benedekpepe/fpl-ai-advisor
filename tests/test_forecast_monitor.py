@@ -123,3 +123,25 @@ def test_chip_only_recommendation_has_nonzero_gain(chip,bonus):
     assert result['team_gain']==0
     assert result['chip_gain']==bonus
     assert result['net']==bonus
+
+
+def test_playing_time_review_requires_start_results_and_excludes_double_fixtures():
+    saved=snapshot()
+    for row in saved['predictions']:
+        row.update(p_start=.8,p_sixty=.7,p_cameo=.1,expected_minutes=70.)
+    saved['snapshot_id']=digest(saved)
+    actual=outcomes()
+    for row in actual:row['starts']=1
+    report=evaluate_snapshot(saved,actual,{11})['playing_time']
+    assert report['p_start']['brier']==pytest.approx(.04)
+    assert report['p_sixty']['brier']==pytest.approx(.09)
+    assert report['expected_minutes']['mae']==20
+    for row in actual:row.pop('starts')
+    report=evaluate_snapshot(saved,actual,{11})['playing_time']
+    assert report['p_start'] is None
+    assert report['p_cameo'] is None
+    assert report['p_sixty'] is not None
+    for row in saved['predictions']:row['fixture_count']=2
+    saved['snapshot_id']=digest(saved)
+    report=evaluate_snapshot(saved,actual,{11})['playing_time']
+    assert all(value is None for value in report.values())

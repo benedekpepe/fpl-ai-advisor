@@ -1,0 +1,40 @@
+name: Forecast monitor
+
+on:
+  schedule:
+    - cron: '23 */6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: forecast-ledger
+  cancel-in-progress: false
+
+jobs:
+  archive:
+    if: github.repository == 'benedekpepe/fpl-ai-advisor'
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      FPL_DATA_SOURCE: live
+      FPL_TRACK_TEAM_ID: ${{ vars.FPL_TRACK_TEAM_ID || '2942747' }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Restore, capture and evaluate
+        run: python -m src.model.forecast_archive --restore-github
+      - name: Preserve rolling ledger
+        uses: actions/upload-artifact@v4
+        with:
+          name: forecast-ledger
+          path: data/forecast_archive/
+          retention-days: 90
+          if-no-files-found: error

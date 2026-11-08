@@ -60,6 +60,8 @@ def _predict_from_history(season: str, raw: pd.DataFrame) -> pd.DataFrame:
     if feats.empty:                       # early season: no current-season rows yet
         return pd.DataFrame(columns=["gw", "id", "name", "position", "team",
                                      "price", "pred", "actual"])
+    from src.model.playing_time import enrich
+    feats = enrich(feats)
     rs = raw[raw["season"] == season] if "season" in raw.columns else raw
     from src.model.projections import score_features
     observed_gws = set(rs.loc[rs["minutes"].notna(), "gw"].unique())
@@ -73,7 +75,14 @@ def _predict_from_history(season: str, raw: pd.DataFrame) -> pd.DataFrame:
         scored.append(group)
     feats = pd.concat(scored)
     feats["opponent_rating_source"] = feats.get("opponent_rating_source", "historical")
+    extra = {}
+    for field in ("minutes_p_play", "p_start", "p_sixty", "p_cameo", "expected_minutes"):
+        if field in feats:
+            extra[field] = (field, "sum" if field == "expected_minutes" else "mean")
+    if "minutes_basis" in feats:
+        extra["minutes_basis"] = ("minutes_basis", "first")
     return feats.groupby(["gw", "element"]).agg(
+        **extra,
         name=("name", "first"), position=("position", "first"),
         team=("team", "first"), price=("value", "first"),
         pred=("pred", "sum"), pred_model=("pred_model", "sum"),
@@ -492,7 +501,8 @@ def _xi_rows(df, fxmap=None):
         if "id" in r and pd.notna(r["id"]):
             row["id"] = int(r["id"])
         row["signal_basis"] = r.get("signal_basis", "recent")
-        for key in ("recent_minutes", "recent_starts", "recent_form", "xgi", "p_play", "fixture_count", "form_weight"):
+        row["minutes_basis"] = r.get("minutes_basis", "unavailable")
+        for key in ("recent_minutes", "recent_starts", "recent_form", "xgi", "p_play", "fixture_count", "form_weight", "minutes_p_play", "p_start", "p_sixty", "p_cameo", "expected_minutes"):
             val = r.get(key)
             if val is not None and pd.notna(val):
                 row[key] = round(float(val), 3)
@@ -694,12 +704,14 @@ def build_advice(team_id, gw=None, ft_override=None, picks_gw=None):
             preds_all = preds_all.copy()
             factors = preds_all["id"].map(live_availability).fillna(1.0)
             preds_all["pred"] = preds_all["pred"] * factors
-            if "p_play" in preds_all:
-                preds_all["p_play"] = preds_all["p_play"] * factors
+            for field in ("p_play", "minutes_p_play", "p_start", "p_sixty", "p_cameo", "expected_minutes"):
+                if field in preds_all:
+                    preds_all[field] = preds_all[field] * factors
             preds_all = preds_all[(factors > 0) | preds_all["id"].isin(ids)]
         pool["pred"] = pool["pred"] * mult
-        if "p_play" in pool:
-            pool["p_play"] = pool["p_play"] * mult
+        for field in ("p_play", "minutes_p_play", "p_start", "p_sixty", "p_cameo", "expected_minutes"):
+            if field in pool:
+                pool[field] = pool[field] * mult
         pool["pred_blend"] = pool["pred_blend"] * mult
         pool = pool[(mult > 0) | pool["id"].isin(ids)]
 

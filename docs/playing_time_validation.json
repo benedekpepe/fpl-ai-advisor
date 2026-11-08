@@ -1,0 +1,305 @@
+{
+  "holdouts": [
+    {
+      "train_seasons": [
+        "2023-24"
+      ],
+      "test_season": "2024-25",
+      "calibration_season": "2023-24",
+      "calibration_gws": [
+        31,
+        38
+      ],
+      "calibration_temperature": 0.9775,
+      "matches": 26497,
+      "minutes": {
+        "observed_guide": {
+          "all": {
+            "mae": 13.3278,
+            "rmse": 24.8307
+          },
+          "active": {
+            "mae": 23.9473,
+            "rmse": 33.1064
+          }
+        },
+        "state_model": {
+          "all": {
+            "mae": 14.3628,
+            "rmse": 23.4747
+          },
+          "active": {
+            "mae": 24.8085,
+            "rmse": 31.3544
+          }
+        }
+      },
+      "probabilities": {
+        "start": {
+          "model_brier": 0.091,
+          "recent_rate_brier": 0.1062,
+          "bins": [
+            {
+              "n": 14845,
+              "predicted": 0.0309,
+              "observed": 0.0306
+            },
+            {
+              "n": 2540,
+              "predicted": 0.3047,
+              "observed": 0.3272
+            },
+            {
+              "n": 2278,
+              "predicted": 0.4966,
+              "observed": 0.5079
+            },
+            {
+              "n": 2438,
+              "predicted": 0.6999,
+              "observed": 0.7096
+            },
+            {
+              "n": 4396,
+              "predicted": 0.904,
+              "observed": 0.8995
+            }
+          ]
+        },
+        "sixty": {
+          "model_brier": 0.0942,
+          "recent_rate_brier": 0.1064,
+          "bins": [
+            {
+              "n": 15158,
+              "predicted": 0.0295,
+              "observed": 0.0313
+            },
+            {
+              "n": 2720,
+              "predicted": 0.2996,
+              "observed": 0.3176
+            },
+            {
+              "n": 2182,
+              "predicted": 0.4982,
+              "observed": 0.5018
+            },
+            {
+              "n": 2518,
+              "predicted": 0.7013,
+              "observed": 0.6894
+            },
+            {
+              "n": 3919,
+              "predicted": 0.8927,
+              "observed": 0.875
+            }
+          ]
+        },
+        "cameo": {
+          "model_brier": 0.0847,
+          "recent_rate_brier": 0.0958,
+          "bins": [
+            {
+              "n": 21103,
+              "predicted": 0.0509,
+              "observed": 0.0565
+            },
+            {
+              "n": 3859,
+              "predicted": 0.2927,
+              "observed": 0.3071
+            },
+            {
+              "n": 1484,
+              "predicted": 0.4663,
+              "observed": 0.467
+            },
+            {
+              "n": 51,
+              "predicted": 0.6404,
+              "observed": 0.5294
+            }
+          ]
+        }
+      },
+      "point_candidate": {
+        "mae": 1.0074,
+        "rmse": 1.9502,
+        "active_mae": 2.0247
+      },
+      "point_baseline": {
+        "mae": 1.0112,
+        "rmse": 1.9595,
+        "active_mae": 2.0355
+      },
+      "point_round_mae_delta_bootstrap95": [
+        -0.00807,
+        0.00032
+      ],
+      "points_pass": true,
+      "limitations": [
+        "Separate chronological evaluation, not measured live accuracy.",
+        "Historical opponent ratings may reflect later revisions; archived injuries are not replayed.",
+        "Probabilities are per fixture; matches in doubles share pre-GW form, their outcomes are dependent.",
+        "Minute labels exclude stoppage time; a substitute may also reach 60 minutes.",
+        "Calibration uses only the final eight gameweeks of the training season."
+      ]
+    },
+    {
+      "train_seasons": [
+        "2024-25"
+      ],
+      "test_season": "2025-26",
+      "calibration_season": "2024-25",
+      "calibration_gws": [
+        31,
+        38
+      ],
+      "calibration_temperature": 0.9827,
+      "matches": 28913,
+      "minutes": {
+        "observed_guide": {
+          "all": {
+            "mae": 12.4202,
+            "rmse": 24.2615
+          },
+          "active": {
+            "mae": 24.2073,
+            "rmse": 33.598
+          }
+        },
+        "state_model": {
+          "all": {
+            "mae": 13.0478,
+            "rmse": 22.4208
+          },
+          "active": {
+            "mae": 23.9765,
+            "rmse": 31.142
+          }
+        }
+      },
+      "probabilities": {
+        "start": {
+          "model_brier": 0.0829,
+          "recent_rate_brier": 0.1015,
+          "bins": [
+            {
+              "n": 16948,
+              "predicted": 0.0279,
+              "observed": 0.0241
+            },
+            {
+              "n": 2529,
+              "predicted": 0.301,
+              "observed": 0.2875
+            },
+            {
+              "n": 2442,
+              "predicted": 0.4956,
+              "observed": 0.4939
+            },
+            {
+              "n": 2406,
+              "predicted": 0.7042,
+              "observed": 0.6929
+            },
+            {
+              "n": 4588,
+              "predicted": 0.9105,
+              "observed": 0.8982
+            }
+          ]
+        },
+        "sixty": {
+          "model_brier": 0.0857,
+          "recent_rate_brier": 0.1005,
+          "bins": [
+            {
+              "n": 17563,
+              "predicted": 0.028,
+              "observed": 0.0273
+            },
+            {
+              "n": 2364,
+              "predicted": 0.2982,
+              "observed": 0.2851
+            },
+            {
+              "n": 2207,
+              "predicted": 0.4951,
+              "observed": 0.4667
+            },
+            {
+              "n": 2513,
+              "predicted": 0.7048,
+              "observed": 0.6793
+            },
+            {
+              "n": 4266,
+              "predicted": 0.9025,
+              "observed": 0.8671
+            }
+          ]
+        },
+        "cameo": {
+          "model_brier": 0.0769,
+          "recent_rate_brier": 0.0884,
+          "bins": [
+            {
+              "n": 23017,
+              "predicted": 0.0493,
+              "observed": 0.0469
+            },
+            {
+              "n": 4143,
+              "predicted": 0.2872,
+              "observed": 0.2882
+            },
+            {
+              "n": 1541,
+              "predicted": 0.4748,
+              "observed": 0.4088
+            },
+            {
+              "n": 210,
+              "predicted": 0.6428,
+              "observed": 0.5905
+            },
+            {
+              "n": 2,
+              "predicted": 0.8695,
+              "observed": 0.5
+            }
+          ]
+        }
+      },
+      "point_candidate": {
+        "mae": 0.9916,
+        "rmse": 1.9687,
+        "active_mae": 2.1736
+      },
+      "point_baseline": {
+        "mae": 0.9932,
+        "rmse": 1.9701,
+        "active_mae": 2.1783
+      },
+      "point_round_mae_delta_bootstrap95": [
+        -0.00474,
+        0.00151
+      ],
+      "points_pass": true,
+      "limitations": [
+        "Separate chronological evaluation, not measured live accuracy.",
+        "Historical opponent ratings may reflect later revisions; archived injuries are not replayed.",
+        "Probabilities are per fixture; matches in doubles share pre-GW form, their outcomes are dependent.",
+        "Minute labels exclude stoppage time; a substitute may also reach 60 minutes.",
+        "Calibration uses only the final eight gameweeks of the training season."
+      ]
+    }
+  ],
+  "points_adopted": false,
+  "decision": "Playing-time probability diagnostics only; production expected-points artifact and weights remain unchanged. Expected minutes are supplementary, not a replacement for the observed-minute guide; their MAE does not improve uniformly."
+}

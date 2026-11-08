@@ -81,6 +81,10 @@ squad optimiser, behind a Streamlit dashboard.
 - **Saved forecast review** — export a live recommendation before its deadline,
   then upload it after the round to compare predictions, saved lineups and
   transfer returns with completed, FPL-checked results.
+- **Playing-time estimates** — the player details show separate starting,
+  60-minute and substitute-appearance probabilities, plus estimated minutes.
+  These supplement observed form; they do not change the point model or lineup
+  objective. Seeded fallback forecasts do not invent these probabilities.
 
 ## Screenshots
 
@@ -162,6 +166,13 @@ average minutes; it is not a separately trained minutes forecast. Reports also
 break down point errors by position and playing-probability calibration.
 Assistant Manager coach rows are excluded from player training and benchmarks.
 The measured position biases do not justify a blanket position adjustment.
+
+The separate playing-time model improves starting and 60-minute probability
+scores on both chronological holdouts. Its expected minutes reduce RMSE, while
+MAE does not improve uniformly; observed average minutes therefore remain
+visible. The state-based point candidate has only small improvements, and both
+round-level bootstrap intervals include zero. It has **not** replaced the
+production point model. See [playing-time evaluation](docs/playing_time_validation.json).
 
 These replace the earlier pipeline benchmark. Historical opponent-strength
 snapshots may have later revisions, and archived injury/availability news is not
@@ -345,8 +356,8 @@ python -m src.model.monitor evaluate data/forecast_logs/<snapshot>.json --output
 
 Set `FPL_FORECAST_LOG_DIR` to append snapshots automatically whenever live advice
 is generated. Use a persistent/mounted directory for that setting. The default
-cloud filesystem is temporary; no durable central store or unattended deadline
-scheduler is enabled by default. Downloaded files remain usable independently.
+cloud filesystem is temporary; the Streamlit app itself does not run an
+unattended deadline scheduler. Downloaded files remain usable independently.
 The ignored `data/` directory keeps local team snapshots out of Git.
 
 Evaluation reports player errors and bias by position, single-fixture playing
@@ -360,6 +371,60 @@ cost of saving a chip for later. The multiweek comparison measures ownership poi
 the transferred players; it does not claim to reproduce future manual lineups or
 captain changes. Earlier live recommendations cannot be proved accurate without
 snapshots saved before their deadlines.
+
+### Automatic archive on GitHub
+
+The [Forecast monitor workflow](.github/workflows/forecast-monitor.yml) runs at
+00:23, 06:23, 12:23 and 18:23 UTC once present on the default branch, and can also
+be started from **Actions → Forecast monitor → Run workflow**. It tracks team
+`2942747`; set the repository Actions variable `FPL_TRACK_TEAM_ID` to change it.
+Only the upstream repository runs this workflow automatically; forks must opt in
+by editing its repository guard.
+
+The first run captures the next open gameweek. During the final 48 hours before
+its deadline, runs refresh the forecast, keeping every original snapshot. Later
+runs score only finished, FPL-checked rounds. Each team/gameweek uses the latest
+pre-deadline snapshot, selected by timestamp without seeing its results.
+
+Each successful run restores the preceding `forecast-ledger` artifact and uploads
+an updated bundle with JSON snapshots, `review.json` and `summary.md`. The job
+summary also shows settled team changes, chip bonus and net points. The ledger
+prunes snapshots older than 90 days by their original capture time; uploaded
+artifacts request 90-day retention (subject to repository limits). These are
+public team forecasts, not private account data or changes to your FPL team.
+Anyone with the appropriate GitHub access may download the artifact; keep your
+own copy for longer-term analysis. This tracks the configured team, not all app
+visitors, and the app links to the archive rather than hosting a central inbox.
+
+The workflow uses its built-in `GITHUB_TOKEN` with read-only repository/Actions
+permissions, so no extra service account or secret is required. A restoration
+failure fails the job rather than silently replacing the archive with an empty
+one. GitHub schedules are best-effort and can be delayed; public-repository
+schedules can be disabled after 60 days without repository activity. See
+[GitHub scheduling](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#schedule)
+and [artifact retention](https://docs.github.com/en/actions/tutorials/store-and-share-data#configuring-a-custom-artifact-retention-period).
+
+### Reproduce playing-time evaluation
+
+```sh
+python -m src.model.playing_time --cache-dir work/validation
+```
+
+The two holdouts train on 2023-24 / 2024-25 and test on the following season.
+Each model reserves GW31–38 of its training season for temperature calibration;
+the held-out test season is never used to fit or calibrate it. Classification
+distinguishes no minutes, 1–59 minutes and 60+ minutes. Starting conditional on
+playing is modelled separately; a substitute can also reach 60 minutes. Features
+use only prior observed matches, including the new 60-minute and substitute
+appearance rates; both fixtures of a double share pre-GW form.
+
+The exported diagnostic artifact, `models/playing_time_v1.pkl`, trains on
+2023-24 through 2025-26 with the final eight rounds reserved for calibration.
+Export requires improved start, 60-minute and substitute-appearance Brier scores
+on both holdouts. It is optional at runtime: missing diagnostics leave point
+advice usable. Live availability scales the probabilities and minute estimates;
+historical validation does not replay deadline-time injury news. Probabilities
+are per fixture, while displayed estimated minutes sum that gameweek's fixtures.
 
 ## Decision audit
 

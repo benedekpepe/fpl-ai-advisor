@@ -1,5 +1,9 @@
 # FPL Advisor – pontosság és előzetesen mentett ajánlások
 
+> Kiegészítés: azóta elkészült a külön játékidőmodell és a 90 napos GitHub Actions
+> archívum munkafolyamata. A részletes, aktuális használat a README-ben található;
+> az alábbi leírás az első, 2026-11-08-i ellenőrzés feljegyzése.
+
 ## Éles ellenőrzés
 
 A GitHub main ága a 0e5db3a javítást tartalmazza. Az éles appot a 2942747-es csapattal megnyitottuk: jelzi a korábbi szezonból/helyettesítő értékekből származó erősségeket, és már nem Neco Williams az első cserejelölt.

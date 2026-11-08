@@ -19,7 +19,8 @@ venv/
 .vscode/
 
 # Trained model artifacts (regenerate with: python -m src.model.model)
-models/
+models/*
+!models/playing_time_v1.pkl
 
 # pytest
 .pytest_cache/

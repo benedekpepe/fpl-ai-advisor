@@ -11,6 +11,7 @@ from itertools import combinations
 import json
 import math
 import os
+import re
 from pathlib import Path
 from statistics import mean
 
@@ -47,7 +48,7 @@ def create_snapshot(advice, forecasts, deadline, *, captured_at=None, model_path
             continue
         record={k:row.get(k) for k in ['name','position','team','opponent_rating_source']}
         record.update(id=int(row['id']),gw=int(row['gw']))
-        for key in ['pred','p_play','recent_minutes','fixture_count']:
+        for key in ['pred','p_play','recent_minutes','fixture_count','minutes_p_play','p_start','p_sixty','p_cameo','expected_minutes']:
             record[key]=number(row.get(key))
         if record['pred'] is not None:
             records.append(record)
@@ -72,9 +73,11 @@ def create_snapshot(advice, forecasts, deadline, *, captured_at=None, model_path
     snapshot['model_sha256']=hashlib.sha256(Path(model_path).read_bytes()).hexdigest() if model_path else None
     root=Path(__file__).resolve().parents[2]
     pipeline=hashlib.sha256()
-    for filename in ['src/advisor/personal.py','src/model/features.py','src/model/projections.py','src/data/teams.py','src/config.py']:
+    for filename in ['src/advisor/personal.py','src/model/playing_time.py','src/model/features.py','src/model/projections.py','src/data/teams.py','src/config.py']:
         pipeline.update((root/filename).read_bytes())
     snapshot['pipeline_sha256']=pipeline.hexdigest()
+    from src.model.playing_time import ARTIFACT
+    snapshot['minutes_model_sha256']=hashlib.sha256(ARTIFACT.read_bytes()).hexdigest() if ARTIFACT.exists() else None
     snapshot['snapshot_id']=digest(snapshot)
     return snapshot
 
@@ -93,6 +96,8 @@ def parse_snapshot(data):
             raise ValueError('This forecast was not captured before its deadline.')
         if not 1<=int(snapshot['target_gw'])<=38 or not isinstance(snapshot['predictions'],list):
             raise ValueError('Invalid snapshot gameweek or predictions.')
+        if not isinstance(snapshot.get('season'),str) or not re.fullmatch(r'[0-9]{4}-[0-9]{2}',snapshot['season']):
+            raise ValueError('Invalid snapshot season.')
     except (KeyError,AttributeError,TypeError) as exc:
         raise ValueError('Snapshot fields are invalid or missing.') from exc
 
@@ -170,11 +175,21 @@ def evaluate_snapshot(snapshot,outcomes,completed_gws):
         if actual is None:missing+=1;continue
         rows.append(dict(gw=p['gw'],id=p['id'],name=p['name'],position=p['position'],
                          predicted=p['pred'],actual=actual['points'],minutes=actual['minutes'],
-                         p_play=p.get('p_play'),recent_minutes=p.get('recent_minutes'),fixture_count=p.get('fixture_count')))
+                         p_play=p.get('p_play'),recent_minutes=p.get('recent_minutes'),fixture_count=p.get('fixture_count'),
+                         starts=actual.get('starts'),
+                         **{k:p.get(k) for k in ['minutes_p_play','p_start','p_sixty','p_cameo','expected_minutes']}))
     target=snapshot['target_gw'];target_rows=[r for r in rows if r['gw']==target]
     positions={p:metrics([r for r in target_rows if r['position']==p]) for p in ['GK','DEF','MID','FWD']}
     single=[r for r in target_rows if r['fixture_count']==1 and r['p_play'] is not None]
     guide=[r for r in target_rows if r['fixture_count']==1 and r['recent_minutes'] is not None]
+    diagnostics={}
+    for name,observed_event in [('p_start',lambda r:r['starts']>0),('p_sixty',lambda r:r['minutes']>=60),
+                        ('p_cameo',lambda r:r['minutes']>0 and r['starts']==0)]:
+        valid=[r for r in target_rows if r['fixture_count']==1 and r[name] is not None and
+               (name=='p_sixty' or r['starts'] is not None)]
+        diagnostics[name]=dict(n=len(valid),brier=round(mean((r[name]-int(observed_event(r)))**2 for r in valid),4)) if valid else None
+    minute_rows=[r for r in target_rows if r['fixture_count']==1 and r['expected_minutes'] is not None]
+    diagnostics['expected_minutes']=dict(n=len(minute_rows),mae=round(mean(abs(r['expected_minutes']-r['minutes']) for r in minute_rows),4)) if minute_rows else None
     lineup=None
     if target in completed:
         ids={int(r['id']) for r in snapshot['before']+snapshot['after']}
@@ -198,7 +213,7 @@ def evaluate_snapshot(snapshot,outcomes,completed_gws):
     complete=len(contribution)==len(snapshot['horizon_weights']) if moves else False
     return dict(snapshot_id=snapshot['snapshot_id'],target_gw=target,
         status='pending' if target not in completed else ('complete' if len(target_rows)==len([p for p in snapshot['predictions'] if p['gw']==target]) else 'partial'),
-        target_metrics=metrics(target_rows),by_position=positions,missing_results=missing,
+        playing_time=diagnostics,target_metrics=metrics(target_rows),by_position=positions,missing_results=missing,
         play_brier=round(mean((r['p_play']-int(r['minutes']>0))**2 for r in single),4) if single else None,
         recent_minutes_guide_mae=round(mean(abs(r['recent_minutes']-r['minutes']) for r in guide),4) if guide else None,
         frozen_lineup=lineup,transfer_contribution=dict(weeks=contribution,complete=complete,
@@ -223,7 +238,8 @@ def fetch_outcomes(snapshot,client):
         for pid,history in pool.map(fetch,sorted(ids)):
             for gw in sorted(settled):
                 matches=[h for h in history if h.get('round')==gw]
-                if matches:collected.append(dict(id=pid,gw=gw,points=sum(h['total_points'] for h in matches),minutes=sum(h['minutes'] for h in matches)))
+                if matches:collected.append(dict(id=pid,gw=gw,points=sum(h['total_points'] for h in matches),minutes=sum(h['minutes'] for h in matches),
+                                                starts=sum(h['starts'] for h in matches) if all('starts' in h for h in matches) else None))
     return collected,completed
 
 
