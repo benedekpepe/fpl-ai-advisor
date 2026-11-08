@@ -3,6 +3,7 @@
 Run locally (with the Postgres container up and the model trained):
     streamlit run app.py
 """
+from html import escape
 import json
 from datetime import datetime, timezone
 
@@ -309,6 +310,8 @@ def money_line(bank_after, ft_left, preserved=False):
 def render_html(a):
     s = a["summary"]
     vc, vlabel = VERDICT[a["transfer"]["verdict"]]
+    if a["transfer"].get("caution"):
+        vc, vlabel = "#f59e0b", "SMALL EDGE"
     cap_v = short_name(s["captain"]) + ("  ×3" if s["triple"] else "")
     bb = (a["chips"]["recommended"] == "bboost")    # highlight bench when Bench Boost is the call
 
@@ -367,6 +370,11 @@ def render_html(a):
     tblock = ["<div class='lbl'>Transfer plan</div>",
               f"<span class='badge' style='background:{vc}'>{vlabel}</span> "
               f"<span style='font-size:13.5px;color:#cdd6e0'>{t['text']}</span>"]
+    if t.get("caution"):
+        tblock.append("<div class='forecast-status seed' role='note'><div>"
+                      "<strong>Small estimated edge</strong>"
+                      f"<small>{escape(t['caution'])}</small></div>"
+                      "<span class='forecast-tag'>UNCERTAIN DECISION</span></div>")
     if t.get("moves"):
         if t["verdict"] == "CHIP":
             tblock.append("<div class='note'>Suggested squad for the chip "
@@ -609,7 +617,12 @@ def forecast_review_controls(advice=None):
                         st.warning("Some player results are missing. This evaluation is incomplete.")
                     lineup=report['frozen_lineup']
                     if lineup:
-                        st.markdown(f"**Saved team: {lineup['before']:.0f} pts · Suggested team: {lineup['after']:.0f} pts · Net: {lineup['net']:+.0f} pts after hits**")
+                        st.markdown(f"**Saved team, no new chip: {lineup['before']:.0f} pts · Suggested team: {lineup['after']:.0f} pts**")
+                        columns = st.columns(3)
+                        columns[0].metric("Team changes", f"{lineup['team_gain']:+.0f} pts")
+                        columns[1].metric("Chip scoring bonus", f"{lineup['chip_gain']:+.0f} pts")
+                        columns[2].metric("Total after hits", f"{lineup['net']:+.0f} pts")
+                        st.caption(f"Team changes + chip scoring bonus - {lineup['hit_cost']:.0f} hit points = total. Team changes compare both saved lineups without chip scoring. Wildcard/Free Hit squad changes count here; their scoring bonus is zero. This does not measure the value of saving a chip for later.")
                         st.caption("Uses the saved XI, bench order, automatic substitutes and captain. Later manual changes are not replayed.")
                 st.download_button("Download evaluation",json.dumps(report,indent=2),
                                    file_name=f"fpl-review-gw{report['target_gw']}.json",mime="application/json",on_click="ignore")

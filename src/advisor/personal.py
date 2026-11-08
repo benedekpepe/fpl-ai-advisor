@@ -841,12 +841,16 @@ def build_advice(team_id, gw=None, ft_override=None, picks_gw=None):
                     "post_xi": _xi_rows(final_df, fxmap),
                     "bank_after": bank + sum(sell[i] for i in outs) - sum(prc[i] for i in ins),
                     "ft_left": max(0, ft - best_k),
-                    "text": f"Worth +{net(best_k):.2f} discounted pts over the next {min(4, 39-gw)} GWs (after hits)."}
+                    "text": f"Estimated +{net(best_k):.2f} discounted pts over the next {min(4, 39-gw)} GWs (after hits)."}
     if not chip_replaces and (ft + 1) in options:
         extra = options[ft + 1][0] - options[best_free_k][0]
         transfer["hit_worth"] = bool(best_k > ft)
-        transfer["hit_note"] = (f"A -4 hit {'IS' if best_k > ft else 'is NOT'} worth it: "
+        transfer["hit_note"] = (f"A -4 hit {'is favoured by this forecast' if best_k > ft else 'is not favoured by this forecast'}: "
                                 f"best extra move adds +{extra:.2f} discounted pts over the next {min(4,39-gw)} GWs.")
+
+    if transfer["verdict"] == "TRANSFER":
+        from src.advisor.decisions import transfer_caution
+        transfer["caution"] = transfer_caution(transfer["net"], transfer["hits"])
 
     # chip table + detail — list every chip; mark the ones already played
     chip_table = []

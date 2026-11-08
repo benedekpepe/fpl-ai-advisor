@@ -180,10 +180,13 @@ def evaluate_snapshot(snapshot,outcomes,completed_gws):
         ids={int(r['id']) for r in snapshot['before']+snapshot['after']}
         actual={pid:outcome(target,pid) for pid in ids}
         if all(r is not None for r in actual.values()):
-            before=frozen_lineup_points(snapshot['before'],actual,snapshot['chip'])
+            before=frozen_lineup_points(snapshot['before'],actual)
+            after_without_chip=frozen_lineup_points(snapshot['after'],actual)
             after=frozen_lineup_points(snapshot['after'],actual,snapshot['chip'])
             hit=4*snapshot['recommendation']['hits']
-            lineup=dict(before=before,after=after,hit_cost=hit,net=after-before-hit)
+            lineup=dict(before=before,after=after,hit_cost=hit,net=after-before-hit,
+                        after_without_chip=after_without_chip,
+                        team_gain=after_without_chip-before,chip_gain=after-after_without_chip)
     contribution=[]
     moves=snapshot['recommendation']['moves']
     for g,weight in snapshot['horizon_weights'].items():
@@ -200,7 +203,7 @@ def evaluate_snapshot(snapshot,outcomes,completed_gws):
         recent_minutes_guide_mae=round(mean(abs(r['recent_minutes']-r['minutes']) for r in guide),4) if guide else None,
         frozen_lineup=lineup,transfer_contribution=dict(weeks=contribution,complete=complete,
             net=round(sum(r['discounted_gain'] for r in contribution)-4*snapshot['recommendation']['hits'],4) if complete else None),
-        limitations='Frozen target-week lineups include automatic substitutes and vice-captain, but not later manual decisions. Multiweek transfer contribution compares ownership points, not XI/captain effects. Brier/observed-minute guide metrics exclude doubles. Snapshots are checksummed exports, not digitally authenticated records.')
+        limitations='Frozen target-week lineups include automatic substitutes and vice-captain, but not later manual decisions. The baseline has no new chip; team_gain holds chip scoring off and chip_gain applies it to the suggested lineup. Wildcard/Free Hit roster changes are included in team_gain, not valued separately as future chip opportunities. Multiweek transfer contribution compares ownership points, not XI/captain effects. Brier/observed-minute guide metrics exclude doubles. Snapshots are checksummed exports, not digitally authenticated records.')
 
 
 def fetch_outcomes(snapshot,client):

@@ -57,7 +57,7 @@ def test_unchecked_round_cannot_be_scored_even_when_stats_are_present():
 def test_checked_results_use_saved_lineups_hits_and_wait_for_whole_horizon():
     saved=snapshot();report=evaluate_snapshot(saved,outcomes(),{11})
     assert report['status']=='complete'
-    assert report['frozen_lineup']==dict(before=24,after=36,hit_cost=4,net=8)
+    assert report['frozen_lineup']==dict(before=24,after=36,hit_cost=4,net=8,after_without_chip=36,team_gain=12,chip_gain=0)
     assert report['transfer_contribution']['complete'] is False
     assert report['transfer_contribution']['net'] is None
     full=evaluate_snapshot(saved,outcomes((11,12,13,14)),{11,12,13,14})
@@ -101,3 +101,25 @@ def test_wrong_live_season_is_rejected_before_fetching_players():
         def get_bootstrap_static(self):return dict(events=[dict(id=1,deadline_time='2027-08-01T12:00:00Z')])
         def get_element_summary(self,_):pytest.fail('wrong season fetched')
     with pytest.raises(ValueError,match='differs'):fetch_outcomes(snapshot(),Client())
+
+
+@pytest.mark.parametrize("chip,bonus", [("bboost", 8), ("3xc", 8), ("wildcard", 0), ("freehit", 0)])
+def test_chip_bonus_is_separate_from_roster_gain_and_hit(chip, bonus):
+    saved=snapshot();saved['chip']=chip;saved['snapshot_id']=digest(saved)
+    result=evaluate_snapshot(saved,outcomes(),{11})['frozen_lineup']
+    assert result['before']==24
+    assert result['after_without_chip']==36
+    assert result['team_gain']==12
+    assert result['chip_gain']==bonus
+    assert result['net']==12+bonus-4
+
+
+@pytest.mark.parametrize("chip,bonus", [("bboost",8),("3xc",2)])
+def test_chip_only_recommendation_has_nonzero_gain(chip,bonus):
+    saved=snapshot();saved['after']=copy.deepcopy(saved['before'])
+    saved['chip']=chip;saved['recommendation']=dict(verdict='HOLD',hits=0,moves=[])
+    saved['snapshot_id']=digest(saved)
+    result=evaluate_snapshot(saved,outcomes(),{11})['frozen_lineup']
+    assert result['team_gain']==0
+    assert result['chip_gain']==bonus
+    assert result['net']==bonus

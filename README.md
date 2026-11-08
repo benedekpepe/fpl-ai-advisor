@@ -55,7 +55,10 @@ squad optimiser, behind a Streamlit dashboard.
   position; the captain candidates and vice-captain follow the same projections.
 - **Transfers** — candidate swaps are compared on discounted next-four-gameweek
   point totals, with each extra transfer's one-off −4 cost deducted. Known selling
-  prices are used; incomplete budget estimates are labelled.
+  prices are used; incomplete budget estimates are labelled. Net gains of at most
+  two points over the full window carry an amber uncertainty note, including a
+  reminder when a hit is involved. This is a display heuristic, not a calibrated
+  confidence interval; optimisation and banking thresholds are unchanged.
 - **Best XI** — the optimal lineup and formation from your current 15, with each
   player's next-4 fixtures and difficulty (FPL's own FDR) on the card.
 - **Chip timing** — compares each unused chip within the available forecast
@@ -349,7 +352,11 @@ The ignored `data/` directory keeps local team snapshots out of Git.
 Evaluation reports player errors and bias by position, single-fixture playing
 probability calibration, and the error of the observed-minute guide. The target
 week's saved lineups are scored with legal automatic substitutions, vice-captain
-fallback and hit costs. The multiweek comparison measures ownership points for
+fallback and hit costs. The baseline uses no new chip; reports separate team
+changes (both lineups without chip scoring), the suggested lineup's Bench Boost
+or Triple Captain scoring bonus, and the combined net after hits. Wildcard/Free
+Hit roster gains count as team changes; this does not measure the opportunity
+cost of saving a chip for later. The multiweek comparison measures ownership points for
 the transferred players; it does not claim to reproduce future manual lineups or
 captain changes. Earlier live recommendations cannot be proved accurate without
 snapshots saved before their deadlines.
